@@ -1,0 +1,75 @@
+name: cie-smart-prepaid-poc
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cie_smart_prepaid_poc
+      POSTGRES_USER: poc_user
+      POSTGRES_PASSWORD: poc_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poc_user -d cie_smart_prepaid_poc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+
+  backend:
+    build:
+      context: ./backend/poc-backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: cie_smart_prepaid_poc
+      DB_USER: poc_user
+      DB_PASSWORD: poc_password
+      MQTT_BROKER_URL: tcp://mosquitto:1883
+      MOCK_DONGLE_BASE_URL: http://mock-dongle:9001
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+
+  mock-dongle:
+    build:
+      context: ./simulators/mock-dongle
+    environment:
+      DEVICE_ID: DONGLE-LAB-0001
+      METER_ID: CIE-LAB-0001
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      BACKEND_HEARTBEAT_URL: http://backend:8080/api/v1/devices/DONGLE-LAB-0001/heartbeat
+    ports:
+      - "9001:9001"
+    depends_on:
+      - mosquitto
+
+  payment-simulator:
+    build:
+      context: ./simulators/payment-simulator
+    environment:
+      BACKEND_CALLBACK_URL: http://backend:8080/api/v1/payments/callback
+      FORWARD_TO_BACKEND: "true"
+    ports:
+      - "9000:9000"
+    depends_on:
+      - backend
+
+volumes:
+  pg-data:
+  mosquitto-data:

@@ -1,0 +1,33 @@
+# Java / Maven
+backend/**/target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Node (futur frontend / BFF V2)
+node_modules/
+dist/
+.next/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Secrets / env
+.env
+*.env.local
+
+# Docker
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

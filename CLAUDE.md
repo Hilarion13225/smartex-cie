@@ -96,11 +96,25 @@ Tables : `payment`, `command`, `audit_event`, `device`, `meter`
 CLAUDE.md
 ```
 
-## Prochaine étape suggérée
+## État d'avancement (24/08/2026)
 
-1. Scaffolder `/backend/common` (events, DTOs, config correlation-id).
-2. `payment-service` (le plus simple, pas de dépendance externe) + tests T01.
-3. `token-command-service` + idempotence (T02, T06).
-4. `mqtt-gateway` + `meter-adapter`/`MockMeter` + `device-service` (T03, T04, T05).
-5. `audit-service` branché sur tous les événements (T15).
-6. Docker Compose pour tout faire tourner ensemble en local (dry run).
+Le backend PoC est **entièrement codé** en un seul déployable Spring Boot (packages
+`payment`, `recharge`, `device`, `audit`, `meteradapter`, `mqtt`, `common`) + deux
+simulateurs Python (`payment-simulator`, `mock-dongle`), + `docker-compose.yml` complet.
+
+**Testé et validé dans le sandbox de conception** (pytest, 7/7 tests passent) :
+simulateurs Python (logique métier T01, T04, T05, T06, T12).
+
+**Non testé** (pas d'accès Maven Central dans le sandbox de conception) : compilation et
+tests du backend Java, intégration Docker Compose complète. **Prochaine étape immédiate
+pour Claude Code** :
+
+1. `docker compose up --build` à la racine, corriger les éventuelles erreurs de
+   compilation Maven ou de wiring Spring (le code n'a jamais été compilé).
+2. Dérouler le scénario T01→T06→T15 du README.md et corriger les écarts.
+3. `mvn test` dans `backend/poc-backend` pour valider `RechargeOrchestratorIdempotencyTest`.
+4. Ajouter un endpoint de recette pour forcer T05 (token invalide) sans flag caché.
+5. Une fois Gate 1 validé, durcir la sécurité MQTT (TLS + ACL par device) avant tout essai
+   avec un compteur réel de laboratoire CIE.
+
+Voir README.md à la racine pour le tableau détaillé "fait / reste à faire".
