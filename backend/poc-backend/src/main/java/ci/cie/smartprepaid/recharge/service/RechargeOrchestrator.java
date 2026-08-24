@@ -36,17 +36,19 @@ public class RechargeOrchestrator {
     private final CommandRepository commandRepository;
     private final DeviceService deviceService;
     private final CommandPublisher commandPublisher;
+    private final CommandDispatcher commandDispatcher;
     private final AuditService auditService;
     private final long commandTtlSeconds;
 
     public RechargeOrchestrator(RechargeRepository rechargeRepository, CommandRepository commandRepository,
                                  DeviceService deviceService, CommandPublisher commandPublisher,
-                                 AuditService auditService,
+                                 CommandDispatcher commandDispatcher, AuditService auditService,
                                  ci.cie.smartprepaid.mqtt.MqttProperties mqttProperties) {
         this.rechargeRepository = rechargeRepository;
         this.commandRepository = commandRepository;
         this.deviceService = deviceService;
         this.commandPublisher = commandPublisher;
+        this.commandDispatcher = commandDispatcher;
         this.auditService = auditService;
         this.commandTtlSeconds = mqttProperties.getCommandTtlSeconds();
     }
@@ -110,17 +112,12 @@ public class RechargeOrchestrator {
                 TokenHasher.sha256(tokenPlaintext), nextSequence, expiresAt);
         command = commandRepository.save(command);
 
-        // ALG-02 étape 6 (suite): pousser la commande au dongle via MQTT.
-        commandPublisher.publishTokenCommand(device.getDeviceId(), command.getCommandId(), correlationId,
-                tokenPlaintext, nextSequence, expiresAt, recharge.getAmountXof());
-        command.markSent();
-        commandRepository.save(command);
-
-        recharge.transitionTo(RechargeStatus.COMMAND_SENT);
-        rechargeRepository.save(recharge);
-        auditService.record(correlationId, "recharge-orchestrator", "COMMAND_SENT", "COMMAND",
-                command.getCommandId().toString(), "SENT", null,
-                "deviceId=%s sequence=%d".formatted(device.getDeviceId(), nextSequence));
+        // ALG-02 étape 6 (suite): pousser la commande au dongle via MQTT, mais
+        // seulement après le commit (cf. CommandDispatcher) pour que la commande
+        // soit visible en base avant qu'un ACK ne puisse revenir.
+        commandDispatcher.dispatchAfterCommit(command.getCommandId(), recharge.getRechargeId(),
+                device.getDeviceId(), correlationId, tokenPlaintext, nextSequence, expiresAt,
+                recharge.getAmountXof());
 
         return recharge;
     }

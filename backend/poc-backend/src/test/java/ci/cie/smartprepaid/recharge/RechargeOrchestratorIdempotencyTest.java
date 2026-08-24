@@ -10,6 +10,8 @@ import ci.cie.smartprepaid.recharge.domain.MeterCommand;
 import ci.cie.smartprepaid.recharge.domain.Recharge;
 import ci.cie.smartprepaid.recharge.repo.CommandRepository;
 import ci.cie.smartprepaid.recharge.repo.RechargeRepository;
+import ci.cie.smartprepaid.recharge.service.CommandDispatcher;
+import ci.cie.smartprepaid.recharge.service.CommandSendFinalizer;
 import ci.cie.smartprepaid.recharge.service.RechargeOrchestrator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,8 +56,15 @@ class RechargeOrchestratorIdempotencyTest {
         MqttProperties props = new MqttProperties();
         props.setCommandTtlSeconds(60);
 
+        // Pas de contexte Spring dans ce test: aucune transaction n'est active, donc
+        // CommandDispatcher publie et marque la commande "sent" de façon synchrone
+        // (cf. branche else de dispatchAfterCommit), comme l'ancien code inline.
+        CommandSendFinalizer finalizer = new CommandSendFinalizer(commandPublisher, commandRepository,
+                rechargeRepository, auditService);
+        CommandDispatcher commandDispatcher = new CommandDispatcher(finalizer);
+
         orchestrator = new RechargeOrchestrator(rechargeRepository, commandRepository, deviceService,
-                commandPublisher, auditService, props);
+                commandPublisher, commandDispatcher, auditService, props);
 
         when(rechargeRepository.save(any(Recharge.class))).thenAnswer(inv -> inv.getArgument(0));
         when(commandRepository.save(any(MeterCommand.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -82,7 +91,7 @@ class RechargeOrchestratorIdempotencyTest {
         assertThat(second.getRechargeId()).isEqualTo(first.getRechargeId());
         // Une seule commande doit avoir été publiée sur le broker MQTT malgré les deux appels.
         verify(commandPublisher, times(1)).publishTokenCommand(anyString(), any(), anyString(), anyString(),
-                anyLong(), any(Instant.class));
+                anyLong(), any(Instant.class), any(BigDecimal.class));
     }
 
     @Test
