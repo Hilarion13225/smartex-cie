@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import ClientLayout from './layouts/ClientLayout'
 import PortalLayout from './layouts/PortalLayout'
 import type { PortalNavItem } from './layouts/PortalLayout'
@@ -39,14 +39,14 @@ const adminNav: PortalNavItem[] = [
   { to: '/admin/services', label: 'Monitoring services', icon: '🖥️' },
 ]
 
-export default function App() {
+function AppRoutes() {
+  const nav = useNavigate()
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Espace public / auth */}
-        <Route path="/" element={<Welcome />} />
-        <Route path="/inscription" element={<Register />} />
-        <Route path="/verification" element={<Otp />} />
+    <Routes>
+      {/* Espace public / auth */}
+      <Route path="/" element={<Welcome />} />
+      <Route path="/inscription" element={<Register onBack={() => nav(-1)} />} />
+      <Route path="/verification" element={<Otp />} />
 
         {/* Espace Client (mobile-first) */}
         <Route path="/app" element={<ClientLayout />}>
@@ -96,6 +96,13 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+  )
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
     </BrowserRouter>
   )
 }

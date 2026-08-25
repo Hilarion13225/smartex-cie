@@ -39,13 +39,13 @@ export function Welcome() {
     }
 
     setLoading(true)
-    const customer = MOCK_CUSTOMERS.find(
+    const foundCustomer = MOCK_CUSTOMERS.find(
       (c) => c.meterId === loginForm.meterId.replace(/\s/g, '') &&
              c.phone.replace(/\s/g, '') === loginForm.phone.replace(/\s/g, '')
     )
-    if (customer) {
-      setCustomer(customer)
-      notify('Connexion réussie', `Bienvenue ${customer.firstName} !`, 'SUCCESS')
+    if (foundCustomer) {
+      setCustomer(foundCustomer as any)
+      notify('Connexion réussie', `Bienvenue ${foundCustomer.firstName} !`, 'SUCCESS')
       setTimeout(() => navigate('/verification'), 1500)
     } else {
       notify('Erreur', 'Identifiants incorrects - Vérifiez MTR et téléphone', 'WARNING')

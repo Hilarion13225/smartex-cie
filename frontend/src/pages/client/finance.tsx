@@ -30,17 +30,17 @@ export function TransactionsPage() {
       const combined = [
         ...storeTransactions.map((st) => ({
           transactionId: st.id,
+          paymentId: `PAY-${st.id}`,
+          rechargeId: `RCG-${st.id}`,
+          tokenId: `TK-${st.id}`,
           amount: st.amount,
           energyValue: (st.amount / 1000) * 1.25,
           provider: st.provider,
           status: st.status === 'success' ? 'CREDIT_APPLIED' : 'PAYMENT_FAILED',
           meterId: st.meterId,
           customerId: '',
-          rechargeId: '',
-          tokenId: '',
-          correlationId: '',
+          correlationId: `CORR-${st.id}`,
           createdAt: st.date,
-          updatedAt: st.date,
         } as Transaction)),
         ...apiTxs,
       ]

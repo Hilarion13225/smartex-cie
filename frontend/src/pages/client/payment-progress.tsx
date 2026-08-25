@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAppStore } from '../../stores/app'
-import { FullScreenLoader } from '../../components/ui'
 import { fcfaToKwh, MOCK_TARIFF_FCFA_PER_KWH } from '../../types'
 
 const operatorLogos: Record<string, string> = {

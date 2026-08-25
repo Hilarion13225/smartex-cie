@@ -3,11 +3,11 @@ import { Toasts } from '../components/ui'
 import { useAppStore } from '../stores/app'
 
 const tabs = [
-  { to: '/app', label: 'Accueil', icon: '🏠' },
-  { to: '/app/compteur', label: 'Compteur', icon: '⚡' },
-  { to: '/app/recharge', label: '', icon: '+', fab: true },
-  { to: '/app/transactions', label: 'Transactions', icon: '📊' },
-  { to: '/app/profil', label: 'Profil', icon: '👤' },
+  { to: '/app', label: 'Accueil', icon: '🏠', end: true },
+  { to: '/app/compteur', label: 'Compteur', icon: '⚡', end: false },
+  { to: '/app/recharge', label: '', icon: '+', fab: true, end: false },
+  { to: '/app/transactions', label: 'Transactions', icon: '📊', end: false },
+  { to: '/app/profil', label: 'Profil', icon: '👤', end: false },
 ]
 
 export default function ClientLayout() {
