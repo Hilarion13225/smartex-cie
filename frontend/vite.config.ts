@@ -4,6 +4,11 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  server: {
+    // Écoute sur toutes les interfaces (pas seulement localhost) pour permettre à d'autres
+    // appareils du même réseau local de tester l'app via l'IP LAN de cette machine.
+    host: true,
+  },
   plugins: [
     react(),
     tailwindcss(),
