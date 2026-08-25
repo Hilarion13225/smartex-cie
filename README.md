@@ -68,6 +68,47 @@ curl -X POST http://localhost:8080/api/v1/auth/verify-otp \
 Utiliser le `token` obtenu dans l'en-tête `Authorization: Bearer $TOKEN` pour tous les
 appels `curl` protégés ci-dessous.
 
+`POST /api/v1/auth/register` crée toujours un compte de rôle `CLIENT` (aucune inscription
+self-service pour les rôles support). Pour la recette, un compte `CIE_OPERATOR` de
+laboratoire est pré-provisionné par migration Flyway (`V4__seed_lab_operator.sql`,
+téléphone `0700000099`) : obtenir un token opérateur suit exactement le même flux
+login/OTP que ci-dessus, en partant de `POST /auth/login` au lieu de `/auth/register`
+(le compte existe déjà).
+
+### Autorisation : matrice rôle × endpoint
+
+Au-delà de l'authentification (JWT valide ou non), chaque endpoint protégé applique
+une règle d'autorisation propre — un CLIENT authentifié n'a pas accès à tout :
+
+| Endpoint | CLIENT | CIE_OPERATOR / CIE_ADMIN | DSI_ADMIN | Anonyme |
+|---|---|---|---|---|
+| `/api/v1/auth/**`, `/api/v1/meters/**`, `/api/v1/payments/callback`, `/api/v1/devices/**`, `/actuator/**` | — | — | — | ✅ |
+| `GET /api/v1/customers/me` | ✅ (soi-même) | ✅ (soi-même) | ✅ (soi-même) | ❌ 401 |
+| `GET /api/v1/recharges/{id}` | ✅ **si propriétaire uniquement**, sinon ❌ 403 | ✅ (toutes) | ✅ (toutes) | ❌ 401 |
+| `POST /api/v1/recharges` | ✅* | ✅* | ✅* | ❌ 401 |
+| `POST /api/v1/commands/{id}/retry` | ❌ 403 | ✅ | ❌ 403 | ❌ 401 |
+| `GET /api/v1/audit`, `GET /api/v1/support/timeline` | ❌ 403 | ✅ | ✅ | ❌ 401 |
+
+L'ownership sur `GET /api/v1/recharges/{id}` compare le `customerId` de la recharge
+(en base) au sujet du JWT ; un non-propriétaire reçoit **403** (pas 404) — ces endpoints
+exigent déjà une authentification, donc masquer l'existence de la ressource derrière un
+404 n'a pas la même valeur défensive que sur une route publique, et 403 reste le code
+HTTP standard pour "authentifié mais pas autorisé" (voir
+`RechargeAuthorization`/`SecurityConfig` pour l'implémentation, `@PreAuthorize` +
+bean réutilisable plutôt que dupliqué par contrôleur).
+
+(*) `POST /api/v1/recharges` n'applique aucune vérification d'ownership du `customerId`
+fourni dans le corps de la requête contre le JWT appelant : limite connue du PoC, hors
+périmètre de ce correctif (qui porte sur la lecture/les actions support), à traiter avant
+tout usage au-delà du laboratoire.
+
+Conséquence pratique pour la recette : une recharge créée via un flux **système**
+(webhook `payment-simulator`, ou l'endpoint de recette `forceInvalidToken` sans
+`customerId` réel) n'appartient à aucun compte CLIENT enregistré — `GET
+/api/v1/recharges/{id}` dessus nécessite donc le **token opérateur** (`0700000099`
+ci-dessus), pas un token CLIENT. Les exemples T01/T05 ci-dessous utilisent `$TOKEN_OP`
+pour cette raison.
+
 ## Scénario de test manuel (T01 → T15)
 
 ### T01 — Paiement nominal + T02/T03/T04 — bout en bout automatique
@@ -84,11 +125,12 @@ au statut `CREDIT_APPLIED`. Cet appel reste **non authentifié** (webhook systè
 §Authentification).
 
 Récupérer le `rechargeId` retourné par les logs backend, puis (endpoint protégé — utiliser
-le `$TOKEN` obtenu ci-dessus) :
+`$TOKEN_OP`, le token de l'opérateur de laboratoire : cette recharge provient du webhook
+système et n'appartient à aucun CLIENT enregistré, voir §Autorisation ci-dessus) :
 
 ```bash
 curl http://localhost:8080/api/v1/recharges/{rechargeId} \
-  -H "Authorization: Bearer $TOKEN"
+  -H "Authorization: Bearer $TOKEN_OP"
 ```
 
 Le champ `finalStatus` doit valoir `CREDIT_APPLIED`, `paymentStatus` doit valoir
@@ -105,16 +147,18 @@ contenant ce marqueur au lieu du token normal `LABTKN-...` :
 ```bash
 curl -X POST http://localhost:8080/api/v1/recharges \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "Authorization: Bearer $TOKEN_OP" \
   -d '{"customerId":"CUST-1","meterId":"CIE-LAB-0001","amount":2000,"channel":"APP","idempotencyKey":"TEST-T05-1","forceInvalidToken":true}'
 ```
 
 La commande passe par `SENT` puis reçoit un ACK `REJECTED` du mock-dongle ; vérifier via
-`GET /api/v1/recharges/{rechargeId}` que `finalStatus` vaut `COMMAND_REJECTED` et que la
-commande listée est au statut `REJECTED`. Un événement d'audit `COMMAND_REJECTED`
-(`errorCode: TOKEN_REJECTED`) doit apparaître dans `GET /api/v1/audit?correlationId=...`.
-Ce champ n'a aucun effet sur le flux nominal (paiement confirmé via `payment-simulator`) :
-il n'existe que sur l'endpoint de recharge manuelle.
+`GET /api/v1/recharges/{rechargeId}` (toujours avec `$TOKEN_OP` : le `customerId` manuel
+`"CUST-1"` ci-dessus n'appartient à aucun CLIENT enregistré, voir §Autorisation) que
+`finalStatus` vaut `COMMAND_REJECTED` et que la commande listée est au statut `REJECTED`.
+Un événement d'audit `COMMAND_REJECTED` (`errorCode: TOKEN_REJECTED`) doit apparaître dans
+`GET /api/v1/audit?correlationId=...` (également réservé aux rôles support, utiliser
+`$TOKEN_OP`). Ce champ n'a aucun effet sur le flux nominal (paiement confirmé via
+`payment-simulator`) : il n'existe que sur l'endpoint de recharge manuelle.
 
 ### T06 / T12 — Double commande / rejeu
 
@@ -125,25 +169,25 @@ ou appeler `POST /api/v1/recharges` (protégé) deux fois avec le même `idempot
 ```bash
 curl -X POST http://localhost:8080/api/v1/recharges \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "Authorization: Bearer $TOKEN_OP" \
   -d '{"customerId":"CUST-1","meterId":"CIE-LAB-0001","amount":2000,"channel":"APP","idempotencyKey":"TEST-KEY-1"}'
 
 # Rejouer exactement la même requête :
 curl -X POST http://localhost:8080/api/v1/recharges \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "Authorization: Bearer $TOKEN_OP" \
   -d '{"customerId":"CUST-1","meterId":"CIE-LAB-0001","amount":2000,"channel":"APP","idempotencyKey":"TEST-KEY-1"}'
 ```
 
 → le second appel doit renvoyer le **même `rechargeId`**, et une seule commande doit avoir
-été publiée sur MQTT (vérifiable via `GET /api/v1/recharges/{id}` : une seule entrée dans
-`commands`).
+été publiée sur MQTT (vérifiable via `GET /api/v1/recharges/{id}` avec `$TOKEN_OP` : une
+seule entrée dans `commands`).
 
 ### T15 — Auditabilité bout en bout
 
 ```bash
 curl "http://localhost:8080/api/v1/audit?correlationId={correlationId}" \
-  -H "Authorization: Bearer $TOKEN"
+  -H "Authorization: Bearer $TOKEN_OP"
 ```
 
 Le `correlationId` est renvoyé dans le header `X-Correlation-Id` de n'importe quelle
@@ -336,6 +380,7 @@ cd simulators/mock-dongle && pip install -r requirements.txt pytest && pytest -v
 | Sécurité: mTLS, ACL MQTT par device (certificats de labo) | ✅ Implémenté (PKI de laboratoire — PKI CIE réelle restant à faire, voir dossier de recette) |
 | customer/auth (inscription, connexion OTP-only, JWT) | ✅ Implémenté et testé end-to-end (voir §Authentification) — SMS mocké (log console), pas d'intégration réelle |
 | Endpoints protégés par JWT (recharges, commandes/retry, audit, support/timeline) | ✅ Implémenté (Spring Security, profil non conditionné — actif dans tous les environnements) |
+| Autorisation par rôle/ownership (client limité à ses propres recharges, retry/audit réservés CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN) | ✅ Implémenté et testé end-to-end avec deux comptes clients réels + le compte opérateur de laboratoire (voir §Autorisation) — `@PreAuthorize` + bean réutilisable pour l'ownership, restrictions par rôle dans `SecurityConfig` pour retry/audit/support |
 | incident-service, rules-engine-service (V2) | ⛔ Hors scope PoC actuel |
 
 > **Statut détaillé des tests (T01–T15, C01–C07), anomalies corrigées, critères

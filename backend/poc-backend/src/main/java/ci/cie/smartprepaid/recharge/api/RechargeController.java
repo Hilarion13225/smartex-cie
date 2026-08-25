@@ -8,6 +8,7 @@ import ci.cie.smartprepaid.recharge.service.RechargeOrchestrator;
 import jakarta.validation.Valid;
 import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import ci.cie.smartprepaid.common.CorrelationIdFilter;
@@ -36,6 +37,13 @@ public class RechargeController {
         return ResponseEntity.accepted().body(RechargeResponse.from(recharge));
     }
 
+    // Ownership : un CLIENT ne peut consulter que ses propres recharges ; les
+    // rôles support (CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN) peuvent tout consulter
+    // (voir SecurityConfig pour la matrice complète et RechargeAuthorization
+    // pour la logique réutilisable). Une recharge inexistante n'est pas bloquée
+    // ici : c'est findRechargeOrThrow ci-dessous qui produit le 404 métier.
+    @PreAuthorize("hasAnyRole('CIE_OPERATOR','CIE_ADMIN','DSI_ADMIN') "
+            + "or @rechargeAuthorization.isOwner(#id, authentication)")
     @GetMapping("/recharges/{id}")
     public RechargeDetailResponse get(@PathVariable UUID id) {
         var recharge = orchestrator.findRechargeOrThrow(id);
