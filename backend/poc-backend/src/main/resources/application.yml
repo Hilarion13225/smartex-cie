@@ -26,6 +26,10 @@ mqtt:
   password: ${MQTT_PASSWORD:}
   command-ttl-seconds: 60
   qos: 1
+  # mTLS (§12_Securite): utilisés seulement si broker-url commence par ssl://.
+  ca-cert-path: ${MQTT_CA_CERT_PATH:}
+  client-cert-path: ${MQTT_CLIENT_CERT_PATH:}
+  client-key-path: ${MQTT_CLIENT_KEY_PATH:}
 
 meter-adapter:
   mock-dongle-base-url: ${MOCK_DONGLE_BASE_URL:http://localhost:9001}

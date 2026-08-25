@@ -25,6 +25,10 @@ dist/
 .env
 *.env.local
 
+# Certificats de laboratoire (générés par infra/mosquitto/generate-lab-certs.sh)
+# -- contient des clés privées, ne jamais commiter.
+infra/mosquitto/certs/
+
 # Docker
 *.log
 

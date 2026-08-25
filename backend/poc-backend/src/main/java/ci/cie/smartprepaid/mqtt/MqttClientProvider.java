@@ -10,9 +10,11 @@ import org.springframework.stereotype.Component;
 
 /**
  * Fournit un unique MqttClient partagé par CommandPublisher et AckListener.
- * TLS mutuel + ACL par device sont de la responsabilité du broker en
- * environnement labo/pré-prod (voir §12 Securite) — ici, on se connecte avec
- * les identifiants du gateway backend, pas ceux d'un dongle individuel.
+ * Se connecte en mTLS (identité = certificat client "backend-gateway") dès
+ * que `mqtt.broker-url` commence par `ssl://` ; l'ACL par device est ensuite
+ * appliquée côté broker à partir du CN de ce certificat (voir §12 Securite,
+ * infra/mosquitto/acl.conf) — le backend n'a jamais accès aux topics d'un
+ * dongle individuel, seulement à ses propres topics de commande/ACK.
  */
 @Component
 public class MqttClientProvider {
@@ -36,6 +38,10 @@ public class MqttClientProvider {
                 if (properties.getUsername() != null) {
                     options.setUserName(properties.getUsername());
                     options.setPassword(properties.getPassword().toCharArray());
+                }
+                if (properties.getBrokerUrl().startsWith("ssl://")) {
+                    options.setSocketFactory(PemTlsSupport.buildSocketFactory(properties.getCaCertPath(),
+                            properties.getClientCertPath(), properties.getClientKeyPath()));
                 }
                 client.connect(options);
                 log.info("Connecté au broker MQTT {}", properties.getBrokerUrl());

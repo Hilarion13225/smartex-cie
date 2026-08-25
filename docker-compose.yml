@@ -20,9 +20,11 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     ports:
-      - "1883:1883"
+      - "8883:8883"
     volumes:
       - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infra/mosquitto/acl.conf:/mosquitto/config/acl.conf:ro
+      - ./infra/mosquitto/certs:/mosquitto/certs:ro
       - mosquitto-data:/mosquitto/data
 
   backend:
@@ -34,11 +36,16 @@ services:
       DB_NAME: cie_smart_prepaid_poc
       DB_USER: poc_user
       DB_PASSWORD: poc_password
-      MQTT_BROKER_URL: tcp://mosquitto:1883
+      MQTT_BROKER_URL: ssl://mosquitto:8883
+      MQTT_CA_CERT_PATH: /certs/ca.crt
+      MQTT_CLIENT_CERT_PATH: /certs/backend-gateway.crt
+      MQTT_CLIENT_KEY_PATH: /certs/backend-gateway.key
       MOCK_DONGLE_BASE_URL: http://mock-dongle:9001
       SERVER_PORT: 8080
     ports:
       - "8080:8080"
+    volumes:
+      - ./infra/mosquitto/certs:/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,10 +59,15 @@ services:
       DEVICE_ID: DONGLE-LAB-0001
       METER_ID: CIE-LAB-0001
       MQTT_HOST: mosquitto
-      MQTT_PORT: "1883"
+      MQTT_PORT: "8883"
+      MQTT_CA_CERT_PATH: /certs/ca.crt
+      MQTT_CLIENT_CERT_PATH: /certs/DONGLE-LAB-0001.crt
+      MQTT_CLIENT_KEY_PATH: /certs/DONGLE-LAB-0001.key
       BACKEND_HEARTBEAT_URL: http://backend:8080/api/v1/devices/DONGLE-LAB-0001/heartbeat
     ports:
       - "9001:9001"
+    volumes:
+      - ./infra/mosquitto/certs:/certs:ro
     depends_on:
       - mosquitto
 

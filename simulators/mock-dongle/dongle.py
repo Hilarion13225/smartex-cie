@@ -10,6 +10,7 @@ compteur qualifié CIE en dehors du scope backend.
 import json
 import logging
 import os
+import ssl
 import threading
 from dataclasses import dataclass, field
 
@@ -21,7 +22,14 @@ log = logging.getLogger("mock-dongle")
 DEVICE_ID = os.getenv("DEVICE_ID", "DONGLE-LAB-0001")
 METER_ID = os.getenv("METER_ID", "CIE-LAB-0001")
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
-MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_PORT = int(os.getenv("MQTT_PORT", "8883"))
+
+# mTLS (§12_Securite): identité = CN du certificat client, doit valoir DEVICE_ID
+# pour matcher infra/mosquitto/acl.conf ("pattern ... cie/lab/%u/..."). Certificats
+# de laboratoire générés par infra/mosquitto/generate-lab-certs.sh.
+MQTT_CA_CERT_PATH = os.getenv("MQTT_CA_CERT_PATH", "/certs/ca.crt")
+MQTT_CLIENT_CERT_PATH = os.getenv("MQTT_CLIENT_CERT_PATH", "/certs/DONGLE-LAB-0001.crt")
+MQTT_CLIENT_KEY_PATH = os.getenv("MQTT_CLIENT_KEY_PATH", "/certs/DONGLE-LAB-0001.key")
 
 COMMAND_TOPIC = f"cie/lab/{DEVICE_ID}/command/token"
 ACK_TOPIC = f"cie/lab/{DEVICE_ID}/ack"
@@ -90,6 +98,14 @@ def build_client() -> mqtt.Client:
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"mock-dongle-{DEVICE_ID}")
     client.on_connect = on_connect
     client.on_message = on_message
+    # mTLS: le broker exige un certificat client (require_certificate true) et
+    # dérive l'identité ACL de son CN -- pas de user/mot de passe séparé.
+    client.tls_set(
+        ca_certs=MQTT_CA_CERT_PATH,
+        certfile=MQTT_CLIENT_CERT_PATH,
+        keyfile=MQTT_CLIENT_KEY_PATH,
+        tls_version=ssl.PROTOCOL_TLSv1_2,
+    )
     return client
 
 
