@@ -33,6 +33,41 @@ Services exposés :
 Un compteur/dongle de laboratoire (`CIE-LAB-0001` / `DONGLE-LAB-0001`) est pré-enregistré
 via la migration Flyway `V2__seed_lab_device.sql`.
 
+## Authentification (domaine customer/auth)
+
+Conformément à `docs/05_reconciliation-api-frontend-backend.md` §8, `/api/v1/recharges`,
+`/api/v1/commands/{id}/retry`, `/api/v1/audit` et `/api/v1/support/timeline` exigent
+désormais un JWT (`Authorization: Bearer <token>`). Restent ouverts (flux système/support,
+pas des clients navigateur) : `/api/v1/meters/**`, `/api/v1/payments/callback`,
+`/api/v1/devices/**`, `/actuator/**`.
+
+Mécanisme **OTP-only** (décision validée) : pas de mot de passe qui conditionne la
+connexion. Le code OTP n'est pas envoyé par SMS réel — il est loggé en clair sur la
+console du backend (`ConsoleOtpSender`, PoC uniquement).
+
+```bash
+# 1. Inscription (le mot de passe est stocké mais réservé à un usage futur, non utilisé ici)
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"phoneNumber":"0700000001","displayName":"Test Client","password":"Test@1234"}'
+
+# 2. Récupérer le code dans les logs backend :
+docker compose logs backend --tail 5 | grep OTP-MOCK
+#   [OTP-MOCK] Code de vérification pour 0700000001 : 862339 (...)
+
+# 3. Vérifier le code -> obtient le JWT
+curl -X POST http://localhost:8080/api/v1/auth/verify-otp \
+  -H "Content-Type: application/json" \
+  -d '{"phoneNumber":"0700000001","code":"862339"}'
+#   {"verified":true,"customer":{...},"token":"eyJ..."}
+
+# Pour un compte déjà inscrit : POST /api/v1/auth/login {"phoneNumber":"..."} déclenche
+# un nouvel OTP (même étapes 2-3 ensuite) au lieu de /register.
+```
+
+Utiliser le `token` obtenu dans l'en-tête `Authorization: Bearer $TOKEN` pour tous les
+appels `curl` protégés ci-dessous.
+
 ## Scénario de test manuel (T01 → T15)
 
 ### T01 — Paiement nominal + T02/T03/T04 — bout en bout automatique
@@ -45,28 +80,32 @@ curl -X POST http://localhost:9000/simulate-payment \
 
 Ceci déclenche automatiquement toute la chaîne : paiement confirmé → token généré →
 commande publiée sur MQTT → mock-dongle applique le crédit → ACK `ACCEPTED` → recharge
-au statut `CREDIT_APPLIED`.
+au statut `CREDIT_APPLIED`. Cet appel reste **non authentifié** (webhook système, voir
+§Authentification).
 
-Récupérer le `rechargeId` retourné par les logs backend, puis :
+Récupérer le `rechargeId` retourné par les logs backend, puis (endpoint protégé — utiliser
+le `$TOKEN` obtenu ci-dessus) :
 
 ```bash
-curl http://localhost:8080/api/v1/recharges/{rechargeId}
+curl http://localhost:8080/api/v1/recharges/{rechargeId} \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-Le champ `finalStatus` doit valoir `CREDIT_APPLIED`, et la liste `commands` doit contenir
-une commande au statut `ACCEPTED`.
+Le champ `finalStatus` doit valoir `CREDIT_APPLIED`, `paymentStatus` doit valoir
+`CONFIRMED`, et la liste `commands` doit contenir une commande au statut `ACCEPTED`.
 
 ### T05 — Token invalide → REJECTED
 
 Le mock-dongle rejette tout token contenant le marqueur `INVALID` (voir `INVALID_TOKEN_MARKER`
 dans `simulators/mock-dongle/dongle.py`). Pour déclencher ce cas en test manuel sans polluer
-le flux nominal, `POST /api/v1/recharges` accepte un champ optionnel `forceInvalidToken`
-(booléen, `false` par défaut) qui force la génération d'un token contenant ce marqueur au
-lieu du token normal `LABTKN-...` :
+le flux nominal, `POST /api/v1/recharges` (protégé) accepte un champ optionnel
+`forceInvalidToken` (booléen, `false` par défaut) qui force la génération d'un token
+contenant ce marqueur au lieu du token normal `LABTKN-...` :
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/recharges \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"customerId":"CUST-1","meterId":"CIE-LAB-0001","amount":2000,"channel":"APP","idempotencyKey":"TEST-T05-1","forceInvalidToken":true}'
 ```
 
@@ -81,16 +120,18 @@ il n'existe que sur l'endpoint de recharge manuelle.
 
 Envoyer deux fois le même paiement simulé avec le **même `providerTxId`** (nécessite un
 petit script, `providerTxId` est généré aléatoirement par défaut dans le simulateur) —
-ou appeler `POST /api/v1/recharges` deux fois avec le même `idempotencyKey` :
+ou appeler `POST /api/v1/recharges` (protégé) deux fois avec le même `idempotencyKey` :
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/recharges \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"customerId":"CUST-1","meterId":"CIE-LAB-0001","amount":2000,"channel":"APP","idempotencyKey":"TEST-KEY-1"}'
 
 # Rejouer exactement la même requête :
 curl -X POST http://localhost:8080/api/v1/recharges \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"customerId":"CUST-1","meterId":"CIE-LAB-0001","amount":2000,"channel":"APP","idempotencyKey":"TEST-KEY-1"}'
 ```
 
@@ -101,7 +142,8 @@ curl -X POST http://localhost:8080/api/v1/recharges \
 ### T15 — Auditabilité bout en bout
 
 ```bash
-curl "http://localhost:8080/api/v1/audit?correlationId={correlationId}"
+curl "http://localhost:8080/api/v1/audit?correlationId={correlationId}" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 Le `correlationId` est renvoyé dans le header `X-Correlation-Id` de n'importe quelle
@@ -292,6 +334,8 @@ cd simulators/mock-dongle && pip install -r requirements.txt pytest && pytest -v
 | mock-dongle (Python, MQTT + HTTP) | ✅ Testé (3/3 tests passent) |
 | Backend Java : compilation/tests réels | ✅ `mvn test` exécuté, build Docker validé |
 | Sécurité: mTLS, ACL MQTT par device (certificats de labo) | ✅ Implémenté (PKI de laboratoire — PKI CIE réelle restant à faire, voir dossier de recette) |
+| customer/auth (inscription, connexion OTP-only, JWT) | ✅ Implémenté et testé end-to-end (voir §Authentification) — SMS mocké (log console), pas d'intégration réelle |
+| Endpoints protégés par JWT (recharges, commandes/retry, audit, support/timeline) | ✅ Implémenté (Spring Security, profil non conditionné — actif dans tous les environnements) |
 | incident-service, rules-engine-service (V2) | ⛔ Hors scope PoC actuel |
 
 > **Statut détaillé des tests (T01–T15, C01–C07), anomalies corrigées, critères
