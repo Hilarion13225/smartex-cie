@@ -4,16 +4,19 @@
 # Ne modifie PAS docker-compose.yml (workflow de dev local inchangé) : ajoute le service
 # frontend (absent en dev, où l'on utilise `npm run dev`) et ne publie plus du tout sur
 # l'hôte les ports qui n'ont aucune raison d'être joignables depuis internet (postgres,
-# mosquitto, mock-dongle, payment-simulator -- seuls consommés en interne par les autres
-# conteneurs, qui se joignent par nom de service sur le réseau Docker interne, indépendamment
-# de toute publication de port). `ports: []` remplace entièrement la liste de la base (les
-# séquences ne sont jamais fusionnées entre fichiers compose, contrairement aux maps) --
-# nécessaire même si le pare-feu (ufw) bloque déjà ces ports : Docker manipule iptables
-# directement pour ses ports publiés, ce qui contourne ufw par défaut, voir
-# https://github.com/chaifeng/ufw-docker. Ne pas essayer de republier sur 127.0.0.1 à la
-# place : cette variante déclenche une race condition reproductible dans le démon Docker
-# observée sur ce VPS (des conteneurs sans lien entre eux se voient "Recreate" en boucle et
-# le bind échoue aléatoirement en "address already in use" alors que le port est libre).
+# mosquitto, mock-dongle, payment-simulator, backend -- tous consommés en interne par les
+# autres conteneurs/le reverse-proxy nginx du frontend, qui se joignent par nom de service
+# sur le réseau Docker interne, indépendamment de toute publication de port). Seul le
+# frontend publie un port (80), voir son nginx.conf pour le reverse-proxy vers /api/v1/ --
+# un pare-feu infrastructure IONOS (Cloud Panel/DCD, distinct de ufw/du pare-feu Docker
+# invités) bloquait le port 8080 lors du premier essai de déploiement de démo malgré un
+# bind 0.0.0.0 confirmé et ufw configuré, d'où ce choix de tout faire transiter par 80.
+#
+# `ports: !reset []` (pas juste `ports: []`) : constaté sur ce VPS qu'une séquence vide
+# seule n'écrase PAS la séquence héritée du fichier de base -- `!reset` est le tag Compose
+# prévu pour ce cas. Ne pas non plus republier sur 127.0.0.1 : cette variante déclenche une
+# race condition reproductible dans le démon Docker observée ici (conteneurs sans lien
+# recréés en boucle, bind en "address already in use" alors que le port est libre).
 
 services:
   postgres:
@@ -29,16 +32,15 @@ services:
     ports: !reset []
 
   backend:
-    environment:
-      # Autorise le frontend statique servi sur ce VPS (port 80) à appeler l'API --
-      # voir CorsConfig.java, en plus des motifs localhost/RFC1918 déjà autorisés en dev.
-      EXTRA_CORS_ORIGINS: "http://${DEPLOY_PUBLIC_IP:-87.106.7.58}"
+    ports: !reset []
 
   frontend:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: "http://${DEPLOY_PUBLIC_IP:-87.106.7.58}:8080"
+        # Same-origin via le reverse-proxy nginx (voir nginx.conf) : pas de port ni de CORS
+        # a gerer, le navigateur voit un seul domaine/port pour le site et l'API.
+        VITE_API_BASE_URL: "http://${DEPLOY_PUBLIC_IP:-87.106.7.58}"
         VITE_USE_MOCK_API: "false"
     ports:
       - "80:80"
