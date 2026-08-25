@@ -84,7 +84,7 @@ export function ClientDashboard() {
             <div className="grid grid-cols-2 gap-3">
               <Card className="p-4">
                 <p className="text-[11px] text-gray-400">Autonomie estimée</p>
-                <p className="font-bold text-gray-900 text-lg">{meter.autonomyDays} jours</p>
+                <p className="font-bold text-gray-900 text-lg">{meter.autonomyDays.toFixed(1)} jours</p>
               </Card>
               <Card className="p-4 flex flex-col justify-between">
                 <p className="text-[11px] text-gray-400">Statut</p>

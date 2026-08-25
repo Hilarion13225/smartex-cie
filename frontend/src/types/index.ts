@@ -210,5 +210,6 @@ export interface AutoRechargeConfig {
 // Tarif MOCK — configurable, ne représente PAS le tarif CIE réel
 export const MOCK_TARIFF_FCFA_PER_KWH = 458.7
 export const fcfaToKwh = (fcfa: number) => fcfa / MOCK_TARIFF_FCFA_PER_KWH
-export const fmtFcfa = (n: number) => n.toLocaleString('fr-FR').replace(/\u202f/g, ' ') + ' FCFA'
+export const fmtFcfa = (n: number) =>
+  n.toLocaleString('fr-FR', { maximumFractionDigits: 2 }).replace(/\u202f/g, ' ') + ' FCFA'
 export const fmtKwh = (n: number) => `${n.toFixed(1)} kWh`
