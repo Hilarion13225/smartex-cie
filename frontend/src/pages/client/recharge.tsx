@@ -258,13 +258,15 @@ export function WavePayment() {
       <div className="bg-gradient-to-t from-white via-white to-white/80 p-5 border-t border-gray-100 space-y-3">
         <Button
           onClick={() => pay(true)}
+          disabled={phase === 'confirming'}
           className="w-full py-4 text-lg font-bold"
         >
-          ✓ Confirmer le paiement
+          {phase === 'confirming' ? '⏳ Traitement...' : '✓ Confirmer le paiement'}
         </Button>
         <Button
           variant="secondary"
           onClick={() => pay(false)}
+          disabled={phase === 'confirming'}
           className="w-full text-sm"
         >
           Tester l'échec
