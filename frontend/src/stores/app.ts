@@ -1,6 +1,26 @@
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type { Customer, NotificationPrefs, AutoRechargeConfig, Alert, PaymentProvider } from '../types'
 import { mockAlerts } from '../mocks/data'
+
+// ─── Stockage des alertes ───
+// localStorage (pas sessionStorage) : contrairement au JWT, une alerte n'est pas un secret
+// et sa valeur pour l'utilisateur (ex. "recharge confirmée à 14h32") ne dépend pas de la
+// fermeture de l'onglet -- perdre l'historique d'alertes à chaque F5 (bug rapporté) était
+// justement le problème à corriger, donc on veut la persistance la plus large possible ici.
+// Même garde try/catch que writeStoredToken (mode privé strict, quota dépassé, etc.) --
+// dégrade vers un état non persisté plutôt que de planter l'app.
+const safeLocalStorage = {
+  getItem: (name: string): string | null => {
+    try { return localStorage.getItem(name) } catch { return null }
+  },
+  setItem: (name: string, value: string) => {
+    try { localStorage.setItem(name, value) } catch { /* voir writeStoredToken */ }
+  },
+  removeItem: (name: string) => {
+    try { localStorage.removeItem(name) } catch { /* voir writeStoredToken */ }
+  },
+}
 
 // ─── Stockage du JWT ───
 // Choix : sessionStorage (backing store) + Zustand (cache réactif en mémoire pour l'UI).
@@ -40,7 +60,7 @@ interface Toast {
   severity: 'SUCCESS' | 'WARNING' | 'CRITICAL' | 'INFO'
 }
 
-interface TransactionRecord {
+export interface TransactionRecord {
   id: string
   date: string
   amount: number
@@ -70,8 +90,12 @@ interface AppState {
   pushAlert: (a: Alert) => void
   markAllRead: () => void
   removeAlert: (alertId: string) => void
-  // Remplace la liste (voir ClientLayout, fetch initial via api.listAlerts() -- en mode
-  // réel, dérivé en direct d'ALG-01, voir RealApiAdapter.listAlerts).
+  // Fusionne avec la liste fraîche renvoyée par api.listAlerts() (ClientLayout, au montage) :
+  // remplace uniquement les alertes `LIVE-*` (dérivées en direct d'ALG-01 par
+  // RealApiAdapter.listAlerts, recalculées à chaque appel, sans suivi lu/non-lu par
+  // conception -- voir ce commentaire) et conserve intactes les alertes générées côté
+  // client par notify() (ex. confirmation de recharge), qui n'ont aucun équivalent backend
+  // et seraient sinon effacées à chaque remontage/F5 (bug rapporté par l'utilisateur).
   setAlerts: (alerts: Alert[]) => void
 
   toasts: Toast[]
@@ -98,7 +122,7 @@ interface AppState {
 
 let toastId = 0
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>()(persist((set, get) => ({
   customer: null,
   setCustomer: (customer) => set({ customer }),
 
@@ -118,14 +142,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   clearSession: () => { writeStoredToken(null); set({ customer: null, token: null }) },
 
-  // Seed initiale avant le premier fetch (ClientLayout appelle api.listAlerts() au montage
-  // et remplace via setAlerts -- mockAlerts ici uniquement pour ne pas afficher un écran
-  // vide le temps du premier appel réseau en mode mock, où le round-trip est simulé).
+  // Valeur de repli seulement : écrasée par l'état persisté (localStorage, voir
+  // safeLocalStorage/partialize ci-dessus) dès qu'un précédent visiteur en a un, et de
+  // toute façon fusionnée avec le premier fetch réel via setAlerts (ClientLayout, au
+  // montage) -- ne sert donc qu'à la toute première visite, pour ne pas afficher un
+  // écran vide le temps de ce premier appel réseau.
   alerts: mockAlerts,
   pushAlert: (a) => set((s) => ({ alerts: [a, ...s.alerts] })),
   markAllRead: () => set((s) => ({ alerts: s.alerts.map((a) => ({ ...a, read: true })) })),
   removeAlert: (alertId) => set((s) => ({ alerts: s.alerts.filter((a) => a.alertId !== alertId) })),
-  setAlerts: (alerts) => set({ alerts }),
+  setAlerts: (freshLiveAlerts) => set((s) => ({
+    alerts: [...freshLiveAlerts, ...s.alerts.filter((a) => !a.alertId.startsWith('LIVE-'))],
+  })),
 
   toasts: [],
   notify: (title, message, severity = 'INFO', type, meterId) =>
@@ -169,6 +197,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   lastPaymentAmount: 0,
   setLastPaymentAmount: (amount) => set({ lastPaymentAmount: amount }),
+}), {
+  name: 'cie_poc_alerts',
+  storage: createJSONStorage(() => safeLocalStorage),
+  // Seul `alerts` est persisté ici : token/pendingPhone ont leur propre gestion
+  // sessionStorage ci-dessus (voir note de sécurité), le reste (prefs, autoRecharge,
+  // transactions, toasts...) n'a jamais été demandé comme survivant à un F5.
+  partialize: (state) => ({ alerts: state.alerts }),
 }))
 
 /** Rôle du customer courant (CLIENT/CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN), si connu.
