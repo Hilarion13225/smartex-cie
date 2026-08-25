@@ -269,9 +269,43 @@ observé sur 24h (`dailyRate = tauxHoraireRéel × 24`) — avec un taux d'accé
 ci-dessus est donc délibérément non représentatif d'une consommation réelle, uniquement choisi
 pour rendre la traversée de seuil observable en quelques minutes de test.
 
-Tests unitaires : `CreditAutonomyServiceTest` (reconstruction avec/sans recharge dans
-l'intervalle, bascule `FALLBACK`→`REAL`, crédit nul/négatif) ; `test_dongle.py` (décrémentation,
-plancher à 0, arrondi, persistance).
+Tests unitaires : `NetConsumptionCalculatorTest` (reconstruction avec/sans recharge dans
+l'intervalle — le cœur du calcul, extrait pour être réutilisé par `ConsumptionHistoryService`
+ci-dessous), `CreditAutonomyServiceTest` (moyenne pondérée, bascule `FALLBACK`→`REAL`, crédit
+nul/négatif), `ConsumptionHistoryServiceTest` ; `test_dongle.py` (décrémentation, plancher à 0,
+arrondi, persistance).
+
+## Connexion frontend/backend (branche `feature/telemetry-alg01`)
+
+Le frontend (`frontend/`) dispose de deux adaptateurs (`VITE_USE_MOCK_API` dans `.env`,
+voir `frontend/services/api.ts`) : `MockApiAdapter` (données simulées) et `RealApiAdapter`
+(vrais appels HTTP). La quasi-totalité de `RealApiAdapter` est désormais branchée sur de
+vraies données — voir `docs/05_reconciliation-api-frontend-backend.md` §9 pour le détail
+endpoint par endpoint et la justification de chaque mapping.
+
+**Endpoints backend ajoutés pour cette connexion** :
+
+| Endpoint | Rôle | Accès |
+|---|---|---|
+| `GET /api/v1/customers` | Liste des clients (écran admin "Utilisateurs") | `CIE_ADMIN`/`DSI_ADMIN` |
+| `GET /api/v1/devices` | Liste des devices (fleet) | `CIE_OPERATOR`/`CIE_ADMIN`/`DSI_ADMIN` |
+| `GET /api/v1/meters` | Liste des compteurs (fleet, supervision CIE) | `CIE_OPERATOR`/`CIE_ADMIN`/`DSI_ADMIN` |
+| `GET /api/v1/recharges` (sans `id`) | Historique transactions (`?customerId=` pour un client, sans pour la fleet) | Ownership ou rôle support (même règle que `/recharges/{id}`) |
+| `GET /api/v1/meters/{id}/consumption` | Historique de consommation bucketé | Public (même niveau que `/status`) |
+
+19 tests HTTP dédiés (`AuthorizationHttpTest`) couvrent les règles d'accès de ces 5 nouveaux
+endpoints (52/52 tests backend au vert au total).
+
+**Reste volontairement mock**, avec justification dans le code (`realApi.ts`), pas un oubli :
+`listTokens`/`getToken` (le token n'est jamais exposé en clair, RG-C-005), `listIncidents`
+(`incident-service` hors scope PoC, voir tableau ci-dessous), `listServices` (ce PoC est un
+seul déployable Spring Boot, pas les 6+5 microservices de l'architecture V2 — rien à
+interroger par "service").
+
+**Validé en conditions réelles** : `docker compose` + serveur de dev frontend, login OTP
+réel, dashboard client avec crédit/autonomie/statut/alerte tous issus du backend. Deux bugs
+d'affichage révélés au passage (crédits non entiers depuis la consommation simulée) et
+corrigés : `fmtFcfa()` sans limite de décimales, pourcentage brut de `CreditRing` sans arrondi.
 
 ## Sécurité MQTT (mTLS + ACL par device)
 
@@ -458,12 +492,13 @@ cd simulators/mock-dongle && pip install -r requirements.txt pytest && pytest -v
 | Migrations DB (schéma + seed) | ✅ Code complet |
 | payment-simulator (Python) | ✅ Testé (4/4 tests passent) |
 | mock-dongle (Python, MQTT + HTTP + persistance + consommation simulée) | ✅ Testé (11/11 tests passent) |
-| Backend Java : compilation/tests réels | ✅ `mvn test` exécuté (33/33 tests), build Docker validé |
-| telemetry/ALG-01 simplifié (relevés, reconstruction consommation, autonomie) | ✅ Implémenté et validé end-to-end via `docker compose` (voir §Télémétrie) — `creditPercent` volontairement omis, point ouvert avec le frontend |
+| Backend Java : compilation/tests réels | ✅ `mvn test` exécuté (52/52 tests), build Docker validé |
+| telemetry/ALG-01 simplifié (relevés, reconstruction consommation, autonomie, historique) | ✅ Implémenté et validé end-to-end via `docker compose` (voir §Télémétrie) — `creditPercent` volontairement omis, point ouvert avec le frontend (voir docs/05 §3) |
 | Sécurité: mTLS, ACL MQTT par device (certificats de labo) | ✅ Implémenté (PKI de laboratoire — PKI CIE réelle restant à faire, voir dossier de recette) |
-| customer/auth (inscription, connexion OTP-only, JWT) | ✅ Implémenté et testé end-to-end (voir §Authentification) — SMS mocké (log console), pas d'intégration réelle |
-| Endpoints protégés par JWT (recharges, commandes/retry, audit, support/timeline) | ✅ Implémenté (Spring Security, profil non conditionné — actif dans tous les environnements) |
-| Autorisation par rôle/ownership (client limité à ses propres recharges, retry/audit réservés CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN) | ✅ Implémenté et testé end-to-end avec deux comptes clients réels + le compte opérateur de laboratoire (voir §Autorisation) — `@PreAuthorize` + bean réutilisable pour l'ownership, restrictions par rôle dans `SecurityConfig` pour retry/audit/support |
+| customer/auth (inscription, connexion OTP-only, JWT, suivi `lastLoginAt`) | ✅ Implémenté et testé end-to-end (voir §Authentification) — SMS mocké (log console), pas d'intégration réelle |
+| Endpoints protégés par JWT (recharges, commandes/retry, audit, support/timeline, customers, devices, meters) | ✅ Implémenté (Spring Security, profil non conditionné — actif dans tous les environnements) |
+| Autorisation par rôle/ownership (client limité à ses propres recharges/transactions, listes admin/fleet réservées support) | ✅ Implémenté et testé end-to-end (voir §Autorisation et §Connexion frontend/backend) — `@PreAuthorize` + bean réutilisable pour l'ownership, restrictions par rôle dans `SecurityConfig` |
+| Connexion frontend/backend (`RealApiAdapter`) | ✅ Quasi complète (voir §Connexion frontend/backend, docs/05 §9) — seuls tokens/incidents/services restent mock, justifiés |
 | incident-service, rules-engine-service (V2) | ⛔ Hors scope PoC actuel |
 
 > **Statut détaillé des tests (T01–T15, C01–C07), anomalies corrigées, critères

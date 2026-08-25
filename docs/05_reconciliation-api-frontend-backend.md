@@ -444,3 +444,63 @@ redesign lourd. Les endpoints 2, 3 et 6 nécessitent des décisions produit/séc
 seulement techniques) avant d'écrire du code. Le domaine authentification (§8) est un
 prérequis structurant qui conditionne une bonne partie du reste (RBAC sur 2, 3, 5) et
 mérite d'être tranché en premier.
+
+> **Ce résumé date du diagnostic initial et n'a pas été réécrit.** Depuis, l'authentification
+> (§8) a été implémentée (voir README §Authentification, commit `232d8c9`), et la branche
+> `feature/telemetry-alg01` a connecté la quasi-totalité du frontend restant — voir §9
+> ci-dessous pour l'état actuel, à jour.
+
+---
+
+## 9. État de la connexion frontend/backend (mise à jour `feature/telemetry-alg01`)
+
+Point de situation après connexion de `RealApiAdapter` (`frontend/src/services/realApi.ts`) à
+tous les endpoints backend qui ont un équivalent réel — voir ce fichier pour le détail
+endpoint par endpoint, chaque choix de mapping y est commenté explicitement.
+
+**Connecté à de vraies données** :
+- `getMeter`/`listMeters` — inclut désormais `autonomyDays`/`creditStatus`/`dataQuality`
+  (ALG-01 simplifié, §3). Mapping explicite `NORMAL/WARNING/CRITICAL/IMMEDIATE` (backend, 4
+  niveaux) → `NORMAL/WATCH/LOW/CRITICAL` (frontend) — `CUT_RISK` (5ᵉ niveau frontend) n'est
+  jamais produit par la version simplifiée, documenté dans le code plutôt que masqué.
+- `getConsumption` — historique réel bucketé (`GET /meters/{id}/consumption`, voir
+  `telemetry.service.ConsumptionHistoryService`).
+- `listTransactions`/`getTransaction` — `GET /recharges?customerId=` (le `customerId` du
+  client connecté, lu depuis le store). `provider` passe tel quel : le payment-simulator
+  renvoie `"PAYMENT_SIMULATOR"`, qui ne correspond à aucune des 4 valeurs de l'enum frontend
+  (`WAVE/ORANGE_MONEY/MTN_MONEY/MOOV_MONEY`, elles-mêmes sans trace dans docs/03, voir §7) —
+  affiché tel quel plutôt que remplacé par un opérateur plausible mais faux.
+- `listUsers`/`listDevices` — `GET /customers` / `GET /devices` (listes, réservées aux rôles
+  support — voir `SecurityConfig`). `DsiUser.status` toujours `ACTIVE` (pas de mécanisme de
+  suspension côté backend), `Device.credentialStatus` toujours `VALID` (pas de suivi
+  d'expiration certificat) — valeurs neutres documentées, pas inventées.
+- `listAlerts` — dérivé **en direct** du `creditStatus` réel (ALG-01), pas persisté, pas de
+  déduplication : ce n'est **pas** un moteur d'alerte (`incident-service`/`rules-engine`
+  restent hors scope, voir plus bas), juste un reflet honnête d'un signal déjà calculé.
+  Effectivement câblé dans l'app (`ClientLayout` fetch au montage + nouveau
+  `store.setAlerts`) — jusqu'ici `listAlerts()` n'était appelé nulle part, le dashboard lisait
+  `alerts` directement depuis le store (seed `mockAlerts` figée, jamais rafraîchie).
+
+**Reste mock, avec justification explicite (pas un oubli)** :
+- `listTokens`/`getToken` — le token n'est jamais exposé en clair (RG-C-005) : rien à
+  connecter, ce mock ne devrait probablement pas exister non plus dans une cible produit.
+- `listIncidents` — `incident-service`/`rules-engine-service` sont explicitement listés
+  "hors scope PoC actuel" (README, CLAUDE.md) : construire un vrai cycle de vie d'incident
+  (`OPEN/ACK/RESOLVED`, assignation...) serait fabriquer une fonctionnalité produit complète,
+  pas connecter une brique existante.
+- `listServices` — ce PoC est **un seul déployable** Spring Boot (voir CLAUDE.md), pas les 6
+  microservices Java + 5 Node de l'architecture V2 : il n'y a littéralement rien à interroger
+  par nom de service. Un faux statut par package serait une donnée inventée.
+
+**Endpoints backend ajoutés pour cette connexion** (aucun n'existait avant cette branche) :
+`GET /api/v1/customers` (liste), `GET /api/v1/devices` (liste), `GET /api/v1/meters` (liste
+flotte), `GET /api/v1/recharges` (liste, avec ou sans `customerId`),
+`GET /api/v1/meters/{id}/consumption` (historique bucketé) — voir README pour le détail et
+`AuthorizationHttpTest` pour la couverture des règles d'accès (19 tests HTTP dédiés).
+
+**Validé en conditions réelles** : `docker compose` + serveur de dev frontend (`VITE_USE_MOCK_API=false`), login OTP réel, dashboard client avec crédit/autonomie/statut/alerte
+tous issus du backend, `listUsers`/`listDevices`/`listMeters`/`listTransactions` vérifiés
+(via l'UI et directement en HTTP). **Pas testé en clic-par-clic** : les écrans admin CIE
+(`cie.tsx`, `admin.tsx`) — leurs appels réseau et le typage ont été vérifiés, mais pas
+parcourus manuellement dans le navigateur faute de compte `CIE_ADMIN`/`DSI_ADMIN` de labo
+pré-provisionné (le seul compte support seedé, §Authentification, est `CIE_OPERATOR`).
