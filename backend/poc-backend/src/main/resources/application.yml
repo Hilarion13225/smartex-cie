@@ -24,11 +24,44 @@ mqtt:
   client-id: poc-backend-gateway
   username: ${MQTT_USERNAME:}
   password: ${MQTT_PASSWORD:}
-  command-ttl-seconds: 60
+  command-ttl-seconds: ${MQTT_COMMAND_TTL_SECONDS:60}
   qos: 1
+  # mTLS (§12_Securite): utilisés seulement si broker-url commence par ssl://.
+  ca-cert-path: ${MQTT_CA_CERT_PATH:}
+  client-cert-path: ${MQTT_CLIENT_CERT_PATH:}
+  client-key-path: ${MQTT_CLIENT_KEY_PATH:}
 
 meter-adapter:
   mock-dongle-base-url: ${MOCK_DONGLE_BASE_URL:http://localhost:9001}
+
+# TelemetryCollector + CreditAutonomyService (ALG-01 simplifié, voir
+# ci.cie.smartprepaid.telemetry.service.CreditAutonomyService pour le détail du calcul).
+telemetry:
+  collection-interval-seconds: ${TELEMETRY_COLLECTION_INTERVAL_SECONDS:300}
+  lookback-days: ${TELEMETRY_LOOKBACK_DAYS:7}
+  min-readings-for-real: ${TELEMETRY_MIN_READINGS_FOR_REAL:3}
+  fallback-daily-consumption-fcfa: ${TELEMETRY_FALLBACK_DAILY_CONSUMPTION_FCFA:500}
+
+# CommandExpiryWatcher (T07/T09 - voir Javadoc de la classe) : le premier passage
+# est retardé pour laisser le temps à la session MQTT persistante (cleanSession=false)
+# de redélivrer les ACK en attente avant que le watcher ne les traite comme TIMEOUT.
+recharge:
+  watcher:
+    initial-delay-ms: ${WATCHER_INITIAL_DELAY_MS:15000}
+    fixed-delay-ms: ${WATCHER_FIXED_DELAY_MS:10000}
+
+# Domaine customer/auth (voir docs/05_reconciliation-api-frontend-backend.md §8).
+# Secret de LABORATOIRE par défaut (même convention que DB_PASSWORD) : à
+# surcharger via JWT_SECRET pour tout environnement au-delà du PoC local.
+jwt:
+  secret: ${JWT_SECRET:cie-lab-poc-jwt-secret-do-not-use-in-production-change-me}
+  expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
+
+# CorsConfig (profil dev uniquement) : origine(s) publique(s) supplémentaire(s) autorisée(s)
+# en plus de localhost/RFC1918 (voir docker-compose.prod.yml, déploiement de démo VPS).
+app:
+  cors:
+    extra-origins: ${EXTRA_CORS_ORIGINS:}
 
 management:
   endpoints:
@@ -39,3 +72,26 @@ management:
 logging:
   pattern:
     console: "%d{ISO8601} [%X{correlationId:-no-correlation}] %-5level %logger{36} - %msg%n"
+
+---
+# Profil "dev" (voir docker-compose.yml SPRING_PROFILES_ACTIVE=dev, même garde-fou
+# que common.CorsConfig @Profile("dev")) : ajoute db/migration-dev/ aux migrations
+# Flyway, qui contient les seeds de laboratoire non destinés à un environnement
+# au-delà du PoC local (V4__seed_lab_operator.sql — voir ce fichier pour le détail
+# de ce qui y est/n'y est pas en dur). Absent de ce profil, ces migrations ne
+# s'appliquent jamais.
+spring:
+  config:
+    activate:
+      on-profile: dev
+  flyway:
+    locations: classpath:db/migration,classpath:db/migration-dev
+
+# OtpService : code de secours accepté en plus du vrai code OTP (toujours généré/envoyé
+# normalement) -- pratique pour la recette manuelle d'une démo distante sans accès aux logs
+# backend. Uniquement défini ici (profil dev) : absent par défaut, donc sans effet hors dev
+# (voir OtpService.devStaticCode). Surchargeable sans toucher au code, ex. pour ne pas
+# réutiliser la même valeur d'une démo publique à l'autre :
+# OTP_DEV_STATIC_CODE=123456 docker compose up -d backend
+otp:
+  dev-static-code: ${OTP_DEV_STATIC_CODE:000000}

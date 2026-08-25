@@ -1,56 +1,42 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
-import { useAppStore } from '../stores/app'
+import { ApiError } from '../services/httpClient'
+import { useAppStore, currentCustomerRole } from '../stores/app'
 import { Button, FullScreenLoader, PageHeader } from '../components/ui'
-
-// Mock data (11 chiffres pour méterId)
-const MOCK_CUSTOMERS = [
-  { phone: '07 08 56 78 90', meterId: '45892123456', firstName: 'Jean', lastName: 'KOUADIO' },
-  { phone: '07 12 34 56 78', meterId: '58901234567', firstName: 'Marie', lastName: 'TOLO' },
-  { phone: '07 98 76 54 32', meterId: '12345678901', firstName: 'Pierre', lastName: 'DIALLO' },
-]
 
 export function Welcome() {
   const navigate = useNavigate()
   const [mode, setMode] = useState<'home' | 'login' | 'register'>('home')
-  const [loginForm, setLoginForm] = useState({ meterId: '45892123456', phone: '0708567890' })
+  const [phone, setPhone] = useState('0700000001')
   const [loading, setLoading] = useState(false)
-  const setCustomer = useAppStore((s) => s.setCustomer)
+  const setPendingPhone = useAppStore((s) => s.setPendingPhone)
   const notify = useAppStore((s) => s.notify)
 
   const handleLogin = async () => {
-    // Validation des champs
-    if (!loginForm.meterId.trim()) {
-      notify('Erreur', 'Veuillez entrer votre numéro de compteur', 'WARNING')
-      return
-    }
-    if (!loginForm.phone.trim()) {
-      notify('Erreur', 'Veuillez entrer votre numéro de téléphone', 'WARNING')
-      return
-    }
-
-    // Format validation (11 chiffres pour méterId)
-    const isValidMeter = /^[0-9]{11}$/.test(loginForm.meterId.replace(/\s/g, ''))
-    const isValidPhone = /^[0-9]{10,}$/.test(loginForm.phone.replace(/\s/g, ''))
-    if (!isValidMeter || !isValidPhone) {
-      notify('Erreur', 'Format invalide: 11 chiffres pour compteur, 10+ pour téléphone', 'WARNING')
+    const digits = phone.replace(/\s/g, '')
+    if (!/^[0-9]{10,}$/.test(digits)) {
+      notify('Erreur', 'Numéro de téléphone invalide (10 chiffres minimum)', 'WARNING')
       return
     }
 
     setLoading(true)
-    const foundCustomer = MOCK_CUSTOMERS.find(
-      (c) => c.meterId === loginForm.meterId.replace(/\s/g, '') &&
-             c.phone.replace(/\s/g, '') === loginForm.phone.replace(/\s/g, '')
-    )
-    if (foundCustomer) {
-      setCustomer(foundCustomer as any)
-      notify('Connexion réussie', `Bienvenue ${foundCustomer.firstName} !`, 'SUCCESS')
-      setTimeout(() => navigate('/verification'), 1500)
-    } else {
-      notify('Erreur', 'Identifiants incorrects - Vérifiez MTR et téléphone', 'WARNING')
+    try {
+      // Backend OTP-only (voir CustomerRole/AuthService) : login ne vérifie qu'un numéro
+      // enregistré et déclenche l'envoi d'un OTP — l'authentification effective se fait à
+      // l'étape suivante (verify-otp), pas ici.
+      await api.login(digits)
+      setPendingPhone(digits)
+      notify('Code envoyé', 'Vérifiez le code reçu', 'SUCCESS')
+      navigate('/verification')
+    } catch (err) {
+      const message = err instanceof ApiError && err.status === 404
+        ? 'Aucun compte pour ce numéro — créez un compte d\'abord'
+        : err instanceof ApiError ? err.message : 'Connexion au serveur impossible'
+      notify('Erreur', message, 'WARNING')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (
@@ -76,24 +62,15 @@ export function Welcome() {
           <PageHeader title="Connexion" onBack={() => setMode('home')} />
           <div className="px-4 py-5 space-y-4">
             <div>
-              <label className="block text-xs text-gray-500 mb-2">Numéro de compteur</label>
-              <input
-                value={loginForm.meterId}
-                onChange={(e) => setLoginForm({ ...loginForm, meterId: e.target.value })}
-                placeholder="MTR-458921"
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cie-500"
-              />
-            </div>
-            <div>
               <label className="block text-xs text-gray-500 mb-2">Numéro de téléphone</label>
               <input
-                value={loginForm.phone}
-                onChange={(e) => setLoginForm({ ...loginForm, phone: e.target.value })}
-                placeholder="07 08 56 78 90"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="0700000001"
                 className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-cie-500"
               />
             </div>
-            <p className="text-xs text-gray-400 text-center">Ex: 45892123456 / 0708567890</p>
+            <p className="text-xs text-gray-400 text-center">Un code de vérification vous sera envoyé</p>
             <Button onClick={handleLogin} disabled={loading} className="w-full mt-6">Continuer</Button>
           </div>
         </div>
@@ -125,6 +102,7 @@ export function Register({ onBack }: { onBack: () => void }) {
     confirm: 'Test@1234',
   })
   const notify = useAppStore((s) => s.notify)
+  const setPendingPhone = useAppStore((s) => s.setPendingPhone)
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }))
 
   // Validations
@@ -172,10 +150,18 @@ export function Register({ onBack }: { onBack: () => void }) {
     }
     if (step === 2) {
       setLoading(true)
-      await api.register({ ...form })
-      setLoading(false)
-      notify('Inscription réussie', 'Vérifiez votre code OTP', 'SUCCESS')
-      navigate('/verification')
+      try {
+        // email/meterId/contractId ne sont pas envoyés au backend (pas de champ
+        // correspondant sur Customer côté backend) — voir RealApiAdapter.register.
+        await api.register({ ...form })
+        setPendingPhone(form.phone.replace(/\s/g, ''))
+        notify('Inscription réussie', 'Vérifiez votre code OTP', 'SUCCESS')
+        navigate('/verification')
+      } catch (err) {
+        notify('Erreur', err instanceof ApiError ? err.message : 'Inscription impossible', 'WARNING')
+      } finally {
+        setLoading(false)
+      }
       return
     }
     setStep(step + 1)
@@ -267,7 +253,9 @@ export function Otp() {
   const navigate = useNavigate()
   const setCustomer = useAppStore((s) => s.setCustomer)
   const notify = useAppStore((s) => s.notify)
-  const customer = useAppStore((s) => s.customer)
+  const setToken = useAppStore((s) => s.setToken)
+  const pendingPhone = useAppStore((s) => s.pendingPhone)
+  const setPendingPhone = useAppStore((s) => s.setPendingPhone)
   const [digits, setDigits] = useState(['', '', '', '', '', ''])
   const [loading, setLoading] = useState(false)
   const [countdown, setCountdown] = useState(45)
@@ -278,6 +266,12 @@ export function Otp() {
     return () => clearInterval(t)
   }, [])
 
+  useEffect(() => {
+    // Arrivée directe sur /verification sans login/register préalable (ex: rafraîchissement
+    // de page) : pas de numéro à vérifier, retour à l'accueil plutôt qu'un échec silencieux.
+    if (!pendingPhone) navigate('/', { replace: true })
+  }, [pendingPhone, navigate])
+
   const setDigit = (i: number, v: string) => {
     const d = [...digits]
     d[i] = v.slice(-1)
@@ -286,12 +280,18 @@ export function Otp() {
   }
 
   const verify = async () => {
+    if (!pendingPhone) return
     setLoading(true)
     try {
-      const { customer: c } = await api.verifyOtp(digits.join('') || '264719')
+      const { customer: c, token } = await api.verifyOtp(pendingPhone, digits.join(''))
+      setToken(token)
       setCustomer(c)
+      setPendingPhone(null)
       notify('Compte activé', 'Votre compteur est prêt', 'SUCCESS')
-      setTimeout(() => navigate('/app'), 1500)
+      const role = currentCustomerRole()
+      setTimeout(() => navigate(role && role !== 'CLIENT' ? '/admin' : '/app'), 1000)
+    } catch (err) {
+      notify('Erreur', err instanceof ApiError ? err.message : 'Vérification impossible', 'WARNING')
     } finally {
       setLoading(false)
     }
@@ -303,7 +303,7 @@ export function Otp() {
       <PageHeader title="Vérification" onBack={() => navigate(-1)} />
       <div className="px-6 py-10 text-center">
         <div className="text-5xl">📲</div>
-        <p className="mt-6 text-sm text-gray-600">Code OTP envoyé au<br /><b>{customer?.phone || '07 08 56 78 90'}</b></p>
+        <p className="mt-6 text-sm text-gray-600">Code OTP envoyé au<br /><b>{pendingPhone || '—'}</b></p>
         <p className="text-xs text-gray-400 mt-4 mb-2">Saisissez les 6 chiffres</p>
         <div className="flex justify-center gap-2">
           {digits.map((d, i) => (

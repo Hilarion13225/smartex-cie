@@ -47,21 +47,15 @@ public class CommandSendFinalizer {
         commandPublisher.publishTokenCommand(deviceId, commandId, correlationId, tokenPlaintext, sequence,
                 expiresAt, amountXof);
 
-        // Le dongle peut ACKer avant que ce "SENT" ne soit persisté (course avec
-        // AckListener sur la même ligne) : ne jamais écraser un statut déjà
-        // terminal (ACCEPTED/REJECTED/DUPLICATE) obtenu entre-temps.
-        commandRepository.findById(commandId).ifPresent(command -> {
-            if (command.getStatus() == CommandStatus.PENDING) {
-                command.markSent();
-                commandRepository.save(command);
-            }
-        });
-        rechargeRepository.findById(rechargeId).ifPresent(recharge -> {
-            if (recharge.getStatus() == RechargeStatus.TOKEN_GENERATED) {
-                recharge.transitionTo(RechargeStatus.COMMAND_SENT);
-                rechargeRepository.save(recharge);
-            }
-        });
+        // Le dongle peut ACKer en quelques millisecondes, avant même que cette méthode n'ait
+        // fini de s'exécuter : UPDATE conditionnel ATOMIQUE (pas de find() + check en mémoire +
+        // save(), qui perdrait silencieusement un ACCEPTED déjà committé entre-temps par
+        // handleAck() -- "lost update" réel découvert sous charge légère, voir la Javadoc de
+        // CommandRepository#markSentIfStatus). Ne fait rien si le statut n'est déjà plus PENDING
+        // (0 ligne affectée) : l'ACK est passé en premier, sa version de l'état fait foi.
+        commandRepository.markSentIfStatus(commandId, CommandStatus.PENDING, CommandStatus.SENT, Instant.now());
+        rechargeRepository.markStatusIfStatus(rechargeId, RechargeStatus.TOKEN_GENERATED,
+                RechargeStatus.COMMAND_SENT, Instant.now());
         auditService.record(correlationId, "recharge-orchestrator", "COMMAND_SENT", "COMMAND",
                 commandId.toString(), "SENT", null,
                 "deviceId=%s sequence=%d".formatted(deviceId, sequence));

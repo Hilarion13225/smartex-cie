@@ -3,7 +3,6 @@ package ci.cie.smartprepaid.recharge.service;
 import ci.cie.smartprepaid.audit.service.AuditService;
 import ci.cie.smartprepaid.device.domain.Device;
 import ci.cie.smartprepaid.device.service.DeviceService;
-import ci.cie.smartprepaid.mqtt.CommandPublisher;
 import ci.cie.smartprepaid.payment.domain.Payment;
 import ci.cie.smartprepaid.recharge.domain.CommandStatus;
 import ci.cie.smartprepaid.recharge.domain.MeterCommand;
@@ -35,19 +34,16 @@ public class RechargeOrchestrator {
     private final RechargeRepository rechargeRepository;
     private final CommandRepository commandRepository;
     private final DeviceService deviceService;
-    private final CommandPublisher commandPublisher;
     private final CommandDispatcher commandDispatcher;
     private final AuditService auditService;
     private final long commandTtlSeconds;
 
     public RechargeOrchestrator(RechargeRepository rechargeRepository, CommandRepository commandRepository,
-                                 DeviceService deviceService, CommandPublisher commandPublisher,
-                                 CommandDispatcher commandDispatcher, AuditService auditService,
-                                 ci.cie.smartprepaid.mqtt.MqttProperties mqttProperties) {
+                                 DeviceService deviceService, CommandDispatcher commandDispatcher,
+                                 AuditService auditService, ci.cie.smartprepaid.mqtt.MqttProperties mqttProperties) {
         this.rechargeRepository = rechargeRepository;
         this.commandRepository = commandRepository;
         this.deviceService = deviceService;
-        this.commandPublisher = commandPublisher;
         this.commandDispatcher = commandDispatcher;
         this.auditService = auditService;
         this.commandTtlSeconds = mqttProperties.getCommandTtlSeconds();
@@ -58,19 +54,33 @@ public class RechargeOrchestrator {
     public Recharge startFromConfirmedPayment(Payment payment, String correlationId) {
         String idempotencyKey = buildIdempotencyKey(payment.getProvider(), payment.getProviderTxId(),
                 payment.getMeterId(), payment.getAmountXof());
+        // provider=null : ce flux a un vrai Payment associé, dont le provider fait déjà
+        // autorité pour l'historique (voir RechargeController.toSummary) -- pas besoin de
+        // le dupliquer sur Recharge.
         return orchestrate(payment.getPaymentId(), payment.getMeterId(), payment.getCustomerId(),
-                payment.getAmountXof(), idempotencyKey, correlationId);
+                payment.getAmountXof(), idempotencyKey, correlationId, false, null);
     }
 
-    /** Recharge manuelle initiée via POST /api/v1/recharges (client fournit idempotencyKey). */
+    /**
+     * Recharge manuelle initiée via POST /api/v1/recharges (client fournit idempotencyKey).
+     * `forceInvalidToken`: endpoint de recette T05 (token invalide -> REJECTED, voir
+     * README §T05) — force un token contenant le marqueur INVALID reconnu par le
+     * mock-dongle. Toujours `false` depuis le flux nominal (paiement confirmé).
+     * `provider` : choisi par le client (WAVE/ORANGE_MONEY/...) -- ce flux ne crée aucun
+     * Payment, donc c'est le seul endroit où cette information est disponible pour
+     * l'historique (voir RechargeController.toSummary, Recharge.provider).
+     */
     @Transactional
     public Recharge startManual(UUID paymentId, String meterId, String customerId,
-                                 java.math.BigDecimal amountXof, String idempotencyKey, String correlationId) {
-        return orchestrate(paymentId, meterId, customerId, amountXof, idempotencyKey, correlationId);
+                                 java.math.BigDecimal amountXof, String idempotencyKey, String correlationId,
+                                 boolean forceInvalidToken, String provider) {
+        return orchestrate(paymentId, meterId, customerId, amountXof, idempotencyKey, correlationId,
+                forceInvalidToken, provider);
     }
 
     private Recharge orchestrate(UUID paymentId, String meterId, String customerId,
-                                  java.math.BigDecimal amountXof, String idempotencyKey, String correlationId) {
+                                  java.math.BigDecimal amountXof, String idempotencyKey, String correlationId,
+                                  boolean forceInvalidToken, String provider) {
         // ALG-02 étape 3: idempotency_key déjà traitée -> retourner l'existant sans recréer.
         var existing = rechargeRepository.findByIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) {
@@ -80,7 +90,8 @@ public class RechargeOrchestrator {
             return existing.get();
         }
 
-        Recharge recharge = new Recharge(paymentId, meterId, customerId, amountXof, idempotencyKey, correlationId);
+        Recharge recharge = new Recharge(paymentId, meterId, customerId, amountXof, idempotencyKey, correlationId,
+                provider);
         recharge = rechargeRepository.save(recharge);
         auditService.record(correlationId, "recharge-orchestrator", "RECHARGE_CREATED", "RECHARGE",
                 recharge.getRechargeId().toString(), "CREATED", null, "meterId=" + meterId);
@@ -99,7 +110,9 @@ public class RechargeOrchestrator {
         }
 
         // ALG-02 étapes 5-6: génération token + création de la commande (séquence monotone).
-        String tokenPlaintext = generateTokenPlaceholder(meterId, amountXof);
+        String tokenPlaintext = forceInvalidToken
+                ? generateInvalidTokenPlaceholder(meterId)
+                : generateTokenPlaceholder(meterId, amountXof);
         recharge.attachTokenHash(TokenHasher.sha256(tokenPlaintext));
         recharge.transitionTo(RechargeStatus.TOKEN_GENERATED);
         rechargeRepository.save(recharge);
@@ -160,6 +173,21 @@ public class RechargeOrchestrator {
                 auditService.record(correlationId, "recharge-orchestrator", "COMMAND_REJECTED", "RECHARGE",
                         recharge.getRechargeId().toString(), "FAILED", "TOKEN_REJECTED", null);
             }
+            case DUPLICATE -> {
+                // Le dongle a détecté un rejeu de ce commandId (son propre mécanisme anti-rejeu,
+                // voir mock-dongle) : le token a NÉCESSAIREMENT déjà été appliqué avec succès lors
+                // d'une tentative antérieure (le dongle n'accepte/n'applique un token qu'une seule
+                // fois par commandId) -- ce backend ne l'avait simplement pas su à temps (ACK
+                // initial gagné par une course puis écrasé par CommandSendFinalizer, cf. sa
+                // Javadoc). Sans ce cas, la recharge restait bloquée indéfiniment en
+                // COMMAND_TIMEOUT malgré un crédit réellement appliqué côté compteur -- bug réel
+                // découvert sous charge légère (T14), pas seulement théorique.
+                recharge.transitionTo(RechargeStatus.CREDIT_APPLIED);
+                auditService.record(correlationId, "recharge-orchestrator", "CREDIT_APPLIED_VIA_DUPLICATE_ACK",
+                        "RECHARGE", recharge.getRechargeId().toString(), "SUCCESS", null,
+                        "ACK DUPLICATE reçu du dongle : le token avait déjà été appliqué avec succès "
+                                + "lors d'une tentative antérieure");
+            }
             case TIMEOUT -> handleTimeout(command, recharge, correlationId);
             default -> log.warn("ACK non géré: {} pour commande {}", ackResult, commandId);
         }
@@ -169,10 +197,18 @@ public class RechargeOrchestrator {
     private void handleTimeout(MeterCommand command, Recharge recharge, String correlationId) {
         if (command.getRetryCount() < MAX_RETRIES) {
             command.incrementRetry();
+            // Renouvelle la fenêtre de validité : l'ancienne est par définition déjà
+            // dépassée (c'est ce qui a déclenché ce TIMEOUT), la republier telle
+            // quelle serait immédiatement hors-fenêtre côté dongle (T13).
+            Instant newExpiresAt = Instant.now().plusSeconds(commandTtlSeconds);
+            command.renewExpiry(newExpiresAt);
             commandRepository.save(command);
-            commandPublisher.publishTokenCommand(command.getDeviceId(), command.getCommandId(), correlationId,
-                    "[retry-no-plaintext-stored]", command.getSequence(), command.getExpiresAt(),
-                    recharge.getAmountXof());
+            // Publication différée à après le commit (cf. CommandDispatcher), pour la
+            // même raison que l'envoi initial : éviter qu'un ACK ne revienne avant que
+            // ce retry ne soit visible en base pour AckListener.
+            commandDispatcher.dispatchAfterCommit(command.getCommandId(), recharge.getRechargeId(),
+                    command.getDeviceId(), correlationId, "[retry-no-plaintext-stored]", command.getSequence(),
+                    newExpiresAt, recharge.getAmountXof());
             recharge.transitionTo(RechargeStatus.COMMAND_TIMEOUT);
             auditService.record(correlationId, "recharge-orchestrator", "COMMAND_RETRY", "COMMAND",
                     command.getCommandId().toString(), "RETRY", null,
@@ -201,9 +237,11 @@ public class RechargeOrchestrator {
                         "Recharge introuvable pour commande " + commandId));
         command.incrementRetry();
         Instant newExpiry = Instant.now().plusSeconds(commandTtlSeconds);
-        commandPublisher.publishTokenCommand(command.getDeviceId(), command.getCommandId(), correlationId,
-                "[retry-manuel-no-plaintext-stored]", command.getSequence(), newExpiry, recharge.getAmountXof());
+        command.renewExpiry(newExpiry);
         commandRepository.save(command);
+        commandDispatcher.dispatchAfterCommit(command.getCommandId(), recharge.getRechargeId(),
+                command.getDeviceId(), correlationId, "[retry-manuel-no-plaintext-stored]", command.getSequence(),
+                newExpiry, recharge.getAmountXof());
         auditService.record(correlationId, "recharge-orchestrator", "COMMAND_RETRY_MANUAL", "COMMAND",
                 commandId.toString(), "RETRY", null, "operatorId=" + operatorId);
         return command;
@@ -234,5 +272,10 @@ public class RechargeOrchestrator {
     /** PoC uniquement: à remplacer par un appel réel au système de prépaiement/HSM (§ALG-02 étape 5). */
     private String generateTokenPlaceholder(String meterId, java.math.BigDecimal amount) {
         return "LABTKN-" + meterId + "-" + UUID.randomUUID();
+    }
+
+    /** T05 (recette): token portant le marqueur INVALID reconnu par le mock-dongle -> REJECTED. */
+    private String generateInvalidTokenPlaceholder(String meterId) {
+        return "LABTKN-INVALID-" + meterId + "-" + UUID.randomUUID();
     }
 }

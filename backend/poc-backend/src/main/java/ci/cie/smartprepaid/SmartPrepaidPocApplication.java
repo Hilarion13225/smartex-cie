@@ -3,6 +3,7 @@ package ci.cie.smartprepaid;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Backend PoC Laboratoire - CIE Smart Retrofit Metering.
@@ -15,6 +16,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  */
 @SpringBootApplication
 @ConfigurationPropertiesScan
+@EnableScheduling
 public class SmartPrepaidPocApplication {
     public static void main(String[] args) {
         SpringApplication.run(SmartPrepaidPocApplication.class, args);

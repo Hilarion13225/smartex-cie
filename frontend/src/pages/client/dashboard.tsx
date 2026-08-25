@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api } from '../../services/api'
+import { DEFAULT_METER_ID, useMock } from '../../services/api'
+import { useLiveMeter } from '../../hooks/useLiveMeter'
 import { useAppStore } from '../../stores/app'
-import type { Meter } from '../../types'
 import { fmtFcfa, fmtKwh } from '../../types'
 import { Badge, Card, CreditStatusBadge, MeterStatusBadge, Skeleton } from '../../components/ui'
 
@@ -15,7 +15,7 @@ function CreditRing({ percent }: { percent: number }) {
         cx="32" cy="32" r={r} fill="none" stroke="#fff" strokeWidth="6" strokeLinecap="round"
         strokeDasharray={c} strokeDashoffset={c * (1 - percent / 100)} transform="rotate(-90 32 32)"
       />
-      <text x="32" y="36" textAnchor="middle" fill="#fff" fontSize="13" fontWeight="700">{percent}%</text>
+      <text x="32" y="36" textAnchor="middle" fill="#fff" fontSize="13" fontWeight="700">{Math.round(percent)}%</text>
     </svg>
   )
 }
@@ -25,14 +25,17 @@ export function ClientDashboard() {
   const customer = useAppStore((s) => s.customer)
   const alerts = useAppStore((s) => s.alerts)
   const lastPaymentAmount = useAppStore((s) => s.lastPaymentAmount)
-  const [meter, setMeter] = useState<Meter | null>(null)
+  // `||` et non `??` : un vrai customer backend a meterId = '' (chaîne vide, pas undefined
+  // — aucune association Customer↔Meter n'existe encore, voir docs/05 §8), que la
+  // coalescence nulle ne remplace pas. Rafraîchi automatiquement (voir useLiveMeter) : le
+  // crédit affiché suit la consommation simulée sans que l'utilisateur recharge la page.
+  const meter = useLiveMeter(customer?.meterId || DEFAULT_METER_ID)
   const [showNotif, setShowNotif] = useState(true)
 
   useEffect(() => {
-    api.getMeter(customer?.meterId ?? 'MTR-458921').then(setMeter)
     const notifTimer = setTimeout(() => setShowNotif(false), 5000)
     return () => clearTimeout(notifTimer)
-  }, [customer])
+  }, [])
 
   const unread = alerts.filter((a) => !a.read)
   const lastAlert = unread[0] ?? alerts[0]
@@ -69,19 +72,30 @@ export function ClientDashboard() {
               <MeterStatusBadge status={meter.status} />
             </Card>
 
+            {/* lastPaymentAmount n'est ajouté qu'en mode mock : les données mock ne changent
+                jamais réellement après une "recharge" simulée (voir recharge.tsx), donc ce
+                boost optimiste est la seule façon de le refléter. En mode réel, meter.creditFcfa
+                vient d'un fetch frais qui reflète déjà toute recharge terminée — l'ajouter en
+                plus double-compterait. */}
             <div className="rounded-2xl bg-gradient-to-br from-orange-500 via-orange-400 to-green-500 text-white p-5 flex items-center justify-between shadow-lg shadow-orange-500/30 animate-slide-up">
               <div>
-                <p className="text-xs text-white font-semibold">⚡ Crédit restant</p>
-                <p className="text-3xl font-extrabold mt-1">{fmtFcfa(meter.creditFcfa + lastPaymentAmount)}</p>
-                <p className="text-sm text-white mt-1">≈ {fmtKwh((meter.creditFcfa + lastPaymentAmount) / 1000 * 1.25)}</p>
+                <p className="text-xs text-white font-semibold flex items-center gap-1.5">
+                  ⚡ Crédit restant
+                  <span className="inline-flex items-center gap-1 text-[9px] font-normal opacity-80" title="Mis à jour automatiquement">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                    en direct
+                  </span>
+                </p>
+                <p className="text-3xl font-extrabold mt-1">{fmtFcfa(meter.creditFcfa + (useMock ? lastPaymentAmount : 0))}</p>
+                <p className="text-sm text-white mt-1">≈ {fmtKwh((meter.creditFcfa + (useMock ? lastPaymentAmount : 0)) / 1000 * 1.25)}</p>
               </div>
-              <CreditRing percent={Math.min(100, ((meter.creditFcfa + lastPaymentAmount) / 50000) * 100)} />
+              <CreditRing percent={Math.min(100, ((meter.creditFcfa + (useMock ? lastPaymentAmount : 0)) / 50000) * 100)} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <Card className="p-4">
                 <p className="text-[11px] text-gray-400">Autonomie estimée</p>
-                <p className="font-bold text-gray-900 text-lg">{meter.autonomyDays} jours</p>
+                <p className="font-bold text-gray-900 text-lg">{meter.autonomyDays.toFixed(1)} jours</p>
               </Card>
               <Card className="p-4 flex flex-col justify-between">
                 <p className="text-[11px] text-gray-400">Statut</p>
@@ -125,11 +139,10 @@ export function ClientDashboard() {
 export function MeterPage() {
   const navigate = useNavigate()
   const customer = useAppStore((s) => s.customer)
-  const [meter, setMeter] = useState<Meter | null>(null)
-
-  useEffect(() => {
-    api.getMeter(customer?.meterId ?? 'MTR-458921').then(setMeter)
-  }, [customer])
+  // `||` et non `??` : un vrai customer backend a meterId = '' (chaîne vide, pas undefined
+  // — aucune association Customer↔Meter n'existe encore, voir docs/05 §8), que la
+  // coalescence nulle ne remplace pas. Rafraîchi automatiquement, voir useLiveMeter.
+  const meter = useLiveMeter(customer?.meterId || DEFAULT_METER_ID)
 
   return (
     <div>
@@ -154,7 +167,13 @@ export function MeterPage() {
                 <div><p className="text-[11px] text-gray-500">Tension</p><p className="font-semibold text-orange-700">{meter.voltage} V</p></div>
                 <div><p className="text-[11px] text-gray-500">Courant</p><p className="font-semibold text-orange-700">{meter.current} A</p></div>
                 <div><p className="text-[11px] text-gray-500">Conso</p><p className="font-semibold text-green-700">{fmtKwh(meter.consumptionTodayKwh)}</p></div>
-                <div><p className="text-[11px] text-gray-500">Crédit</p><p className="font-semibold text-green-700">{fmtFcfa(meter.creditFcfa)}</p></div>
+                <div>
+                  <p className="text-[11px] text-gray-500 flex items-center gap-1">
+                    Crédit
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" title="Mis à jour automatiquement" />
+                  </p>
+                  <p className="font-semibold text-green-700">{fmtFcfa(meter.creditFcfa)}</p>
+                </div>
                 <div><p className="text-[11px] text-gray-500">Alertes</p><p className="font-semibold text-red-600">{meter.alertCount}</p></div>
               </div>
             </div>

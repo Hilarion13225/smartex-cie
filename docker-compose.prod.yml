@@ -1,0 +1,61 @@
+# Override de déploiement (démo VPS, IP brute -- voir README §Déploiement démo).
+# Usage : docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+#
+# Ne modifie PAS docker-compose.yml (workflow de dev local inchangé) : ajoute le service
+# frontend (absent en dev, où l'on utilise `npm run dev`) et ne publie plus du tout sur
+# l'hôte les ports qui n'ont aucune raison d'être joignables depuis internet (postgres,
+# mosquitto, mock-dongle, payment-simulator, backend -- tous consommés en interne par les
+# autres conteneurs/le reverse-proxy nginx du frontend, qui se joignent par nom de service
+# sur le réseau Docker interne, indépendamment de toute publication de port). Seul le
+# frontend publie un port (80/443), voir son nginx.conf pour le reverse-proxy vers /api/v1/
+# -- un pare-feu infrastructure IONOS (Cloud Panel/DCD, distinct de ufw/du pare-feu Docker
+# invités) bloquait le port 8080 lors du premier essai de déploiement de démo malgré un
+# bind 0.0.0.0 confirmé et ufw configuré, d'où ce choix de tout faire transiter par 80/443.
+# Le navigateur voit un site same-origin (un seul domaine/port pour le site et l'API), mais
+# Spring voit quand même le header Origin du navigateur et le rejette sans EXTRA_CORS_ORIGINS
+# explicite ci-dessous (constaté en déploiement réel, pas juste théorique).
+#
+# `ports: !reset []` (pas juste `ports: []`) : constaté sur ce VPS qu'une séquence vide
+# seule n'écrase PAS la séquence héritée du fichier de base -- `!reset` est le tag Compose
+# prévu pour ce cas. Ne pas non plus republier sur 127.0.0.1 : cette variante déclenche une
+# race condition reproductible dans le démon Docker observée ici (conteneurs sans lien
+# recréés en boucle, bind en "address already in use" alors que le port est libre).
+
+services:
+  postgres:
+    ports: !reset []
+
+  mosquitto:
+    ports: !reset []
+
+  mock-dongle:
+    ports: !reset []
+
+  payment-simulator:
+    ports: !reset []
+
+  backend:
+    ports: !reset []
+    environment:
+      # Le reverse-proxy nginx rend le site same-origin du point de vue du NAVIGATEUR, mais
+      # Spring voit quand meme un header Origin (https://poc.smartexdigit.com) different de
+      # ce qu'il attend et rejette en 403 "Invalid CORS request" sans ceci -- verifie en
+      # deploiement reel (voir CorsConfig.java, profil dev uniquement).
+      EXTRA_CORS_ORIGINS: "https://${DEPLOY_HOST:-poc.smartexdigit.com}"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: "https://${DEPLOY_HOST:-poc.smartexdigit.com}"
+        VITE_USE_MOCK_API: "false"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Defi ACME (certbot webroot) + certificats Let's Encrypt obtenus sur l'hote (pas dans
+      # le conteneur : doivent survivre a un rebuild d'image) -- voir infra/certbot-renew.sh.
+      - ./certbot/www:/var/www/certbot
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - backend

@@ -1,10 +1,36 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../../services/api'
-import { useAppStore } from '../../stores/app'
+import { useAppStore, type TransactionRecord } from '../../stores/app'
 import type { Token, Transaction } from '../../types'
-import { fmtFcfa } from '../../types'
+import { fcfaToKwh, fmtFcfa } from '../../types'
 import { Card, PageHeader, RechargeStatusBadge, Skeleton } from '../../components/ui'
+
+// Les recharges tentées côté client (useAppStore.transactions, voir WavePayment/OMPayment)
+// n'ont pas d'équivalent backend distinct (RG : le paiement EST la transaction, voir
+// mapTransaction dans realApi.ts) -- reconstruit ici le même objet Transaction pour
+// affichage, utilisé à la fois par la liste (combine avec l'API) et le détail (lookup direct,
+// sans quoi getTransaction() -- composé à partir de listTransactions() côté backend -- ne les
+// trouverait jamais et afficherait "introuvable" sur la transaction la plus récente).
+function mapStoreTransaction(st: TransactionRecord): Transaction {
+  return {
+    transactionId: st.id,
+    paymentId: `PAY-${st.id}`,
+    rechargeId: `RCG-${st.id}`,
+    tokenId: `TK-${st.id}`,
+    amount: st.amount,
+    // Même tarif que partout ailleurs (fcfaToKwh, 458.7 FCFA/kWh) -- une formule ad-hoc
+    // différente ici affichait une énergie incohérente pour la même recharge selon qu'elle
+    // vienne du store local (juste après paiement) ou de l'API (au rechargement de page).
+    energyValue: +fcfaToKwh(st.amount).toFixed(1),
+    provider: st.provider,
+    status: st.status === 'success' ? 'CREDIT_APPLIED' : 'PAYMENT_FAILED',
+    meterId: st.meterId,
+    customerId: '',
+    correlationId: `CORR-${st.id}`,
+    createdAt: st.date,
+  }
+}
 
 const providerLabel: Record<string, string> = {
   WAVE: 'Wave', ORANGE_MONEY: 'Orange Money', MTN_MONEY: 'MTN Money', MOOV_MONEY: 'Moov Money',
@@ -23,30 +49,38 @@ export function TransactionsPage() {
   const [status, setStatus] = useState('TOUS')
   const [provider, setProvider] = useState('TOUS')
   const storeTransactions = useAppStore((s) => s.transactions)
+  // RealApiAdapter.listTransactions() lit customer.customerId au moment de l'appel et
+  // renvoie [] s'il est encore vide -- sans le redéclencher ici quand `customer` arrive
+  // (ClientLayout le réhydrate de façon asynchrone après un F5, voir sa note), un montage
+  // juste avant la fin de cette réhydratation reste bloqué sur une liste vide pour de bon.
+  const customer = useAppStore((s) => s.customer)
 
+  // Polling (pas de push serveur->client dans ce PoC, meme approche que useLiveMeter) :
+  // sans ca, une recharge qui progresse en arriere-plan (COMMAND_SENT -> CREDIT_APPLIED)
+  // ne se reflete jamais ici tant que l'utilisateur ne recharge pas la page a la main.
+  // setTimeout enchaine (pas setInterval) pour ne jamais empiler des requetes si une
+  // reponse tarde.
   useEffect(() => {
-    api.listTransactions().then((apiTxs) => {
-      // Combine API transactions with store transactions (store first for recency)
-      const combined = [
-        ...storeTransactions.map((st) => ({
-          transactionId: st.id,
-          paymentId: `PAY-${st.id}`,
-          rechargeId: `RCG-${st.id}`,
-          tokenId: `TK-${st.id}`,
-          amount: st.amount,
-          energyValue: (st.amount / 1000) * 1.25,
-          provider: st.provider,
-          status: st.status === 'success' ? 'CREDIT_APPLIED' : 'PAYMENT_FAILED',
-          meterId: st.meterId,
-          customerId: '',
-          correlationId: `CORR-${st.id}`,
-          createdAt: st.date,
-        } as Transaction)),
-        ...apiTxs,
-      ]
-      setTxs(combined)
-    })
-  }, [storeTransactions])
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const tick = () => {
+      api.listTransactions()
+        .then((apiTxs) => {
+          if (cancelled) return
+          // Combine API transactions with store transactions (store first for recency)
+          setTxs([...storeTransactions.map(mapStoreTransaction), ...apiTxs])
+        })
+        .catch(() => { /* transitoire (reseau/serveur) -- le prochain tick se rattrapera */ })
+        .finally(() => { if (!cancelled) timer = setTimeout(tick, 5000) })
+    }
+    tick()
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [storeTransactions, customer])
 
   const filtered = useMemo(() => (txs ?? []).filter((t) =>
     (status === 'TOUS' || t.status === status) && (provider === 'TOUS' || t.provider === provider),
@@ -54,15 +88,25 @@ export function TransactionsPage() {
 
   return (
     <div>
-      <div className="px-5 pt-5"><h1 className="text-xl font-bold text-gray-900">Transactions</h1></div>
+      <div className="px-5 pt-5 flex items-center gap-2">
+        <h1 className="text-xl font-bold text-gray-900">Transactions</h1>
+        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-400" title="Mis à jour automatiquement">
+          <span className="w-1.5 h-1.5 rounded-full bg-cie-500 animate-pulse" />
+          en direct
+        </span>
+      </div>
       <div className="px-5 mt-3 flex gap-2 overflow-x-auto pb-1">
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-xs bg-white border border-gray-200 rounded-full px-3 py-1.5">
           <option value="TOUS">Statut : tous</option>
-          <option value="CREDIT_APPLIED">CREDIT_APPLIED</option>
-          <option value="PAYMENT_FAILED">PAYMENT_FAILED</option>
+          <option value="CREATED">CREATED</option>
           <option value="PAYMENT_PENDING">PAYMENT_PENDING</option>
+          <option value="PAYMENT_CONFIRMED">PAYMENT_CONFIRMED</option>
+          <option value="PAYMENT_FAILED">PAYMENT_FAILED</option>
           <option value="TOKEN_GENERATED">TOKEN_GENERATED</option>
+          <option value="COMMAND_SENT">COMMAND_SENT</option>
+          <option value="CREDIT_APPLIED">CREDIT_APPLIED</option>
           <option value="COMMAND_REJECTED">COMMAND_REJECTED</option>
+          <option value="COMMAND_UNKNOWN">COMMAND_UNKNOWN</option>
         </select>
         <select value={provider} onChange={(e) => setProvider(e.target.value)} className="text-xs bg-white border border-gray-200 rounded-full px-3 py-1.5">
           <option value="TOUS">Fournisseur : tous</option>
@@ -81,7 +125,7 @@ export function TransactionsPage() {
               <img src={providerLogo[t.provider] || '/logos/wave-logo.jpg'} alt={t.provider} className="w-10 h-10 rounded-xl object-contain" />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-semibold text-gray-900">{fmtFcfa(t.amount)} <span className="text-gray-400 font-normal">· {t.energyValue} kWh</span></span>
-                <span className="block text-[11px] text-gray-400 truncate">{t.transactionId} · {new Date(t.createdAt).toLocaleDateString('fr-FR')} · {providerLabel[t.provider]}</span>
+                <span className="block text-[11px] text-gray-400 truncate">{t.transactionId} · {new Date(t.createdAt).toLocaleDateString('fr-FR')} · {providerLabel[t.provider] ?? t.provider}</span>
               </span>
               <RechargeStatusBadge status={t.status} />
             </Card>
@@ -94,13 +138,19 @@ export function TransactionsPage() {
 
 export function TransactionDetail() {
   const navigate = useNavigate()
-  const { txId } = useParams()
+  const { transactionId } = useParams()
+  const storeTransactions = useAppStore((s) => s.transactions)
   const [tx, setTx] = useState<Transaction | undefined>()
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.getTransaction(txId ?? '').then((t) => { setTx(t); setLoading(false) })
-  }, [txId])
+    // D'abord les transactions locales (voir mapStoreTransaction ci-dessus) : l'API ne les
+    // connaît pas, un lookup direct évite un aller-retour réseau inutile et le faux
+    // "introuvable" sur la recharge qu'on vient de faire.
+    const local = storeTransactions.find((st) => st.id === transactionId)
+    if (local) { setTx(mapStoreTransaction(local)); setLoading(false); return }
+    api.getTransaction(transactionId ?? '').then((t) => { setTx(t); setLoading(false) })
+  }, [transactionId, storeTransactions])
 
   const chain = [
     { label: 'Paiement', sub: 'Confirmé', ok: tx && tx.status !== 'PAYMENT_FAILED' && tx.status !== 'PAYMENT_PENDING' },
@@ -112,7 +162,7 @@ export function TransactionDetail() {
 
   return (
     <div className="min-h-screen bg-[#f6f8fa]">
-      <PageHeader title={`Transaction ${txId}`} onBack={() => navigate(-1)} />
+      <PageHeader title={`Transaction ${transactionId}`} onBack={() => navigate(-1)} />
       <div className="px-5 py-5 space-y-4">
         {loading ? (
           <Skeleton className="h-72 rounded-2xl" />
@@ -126,7 +176,7 @@ export function TransactionDetail() {
                 <RechargeStatusBadge status={tx.status} />
               </div>
               <div className="mt-4 space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-gray-400">Fournisseur</span><b>{providerLabel[tx.provider]}</b></div>
+                <div className="flex justify-between"><span className="text-gray-400">Fournisseur</span><b>{providerLabel[tx.provider] ?? tx.provider}</b></div>
                 <div className="flex justify-between"><span className="text-gray-400">Énergie</span><b>{tx.energyValue} kWh</b></div>
                 <div className="flex justify-between"><span className="text-gray-400">Compteur</span><b>{tx.meterId}</b></div>
                 <div className="flex justify-between"><span className="text-gray-400">Recharge ID</span><b>{tx.rechargeId}</b></div>

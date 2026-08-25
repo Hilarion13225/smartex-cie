@@ -213,7 +213,7 @@ export function CieMeterDetail() {
           <div className="flex justify-between"><span className="text-gray-400">Dongle / device</span><b>{meter.deviceId}</b></div>
           <div className="flex justify-between"><span className="text-gray-400">Localisation</span><b>{meter.location}</b></div>
           <div className="flex justify-between"><span className="text-gray-400">Statut crédit</span><CreditStatusBadge status={meter.creditStatus} /></div>
-          <div className="flex justify-between"><span className="text-gray-400">Autonomie estimée</span><b>{meter.autonomyDays} jours</b></div>
+          <div className="flex justify-between"><span className="text-gray-400">Autonomie estimée</span><b>{meter.autonomyDays.toFixed(1)} jours</b></div>
         </Card>
         <Card className="p-5">
           <p className="font-semibold text-sm mb-3">Transactions du compteur</p>

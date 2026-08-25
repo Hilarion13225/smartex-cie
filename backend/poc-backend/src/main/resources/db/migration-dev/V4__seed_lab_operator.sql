@@ -1,0 +1,26 @@
+-- Compte opérateur CIE de laboratoire, pré-enregistré comme le dongle de
+-- V2__seed_lab_device.sql, pour permettre les scénarios de recette T15/audit
+-- et les vérifications d'ownership (§07_reconciliation, correctif "trou
+-- d'autorisation") sans passer par une inscription CLIENT normale : /auth/register
+-- crée toujours un compte CLIENT (voir AuthService#register), un rôle support
+-- ne peut donc être obtenu autrement que par un provisioning direct comme celui-ci.
+--
+-- IDENTIFIANTS DE LABORATOIRE UNIQUEMENT — voir README §Authentification.
+-- Le numéro de téléphone (0700000099) est fixe et documenté publiquement dans
+-- ce dépôt : ce compte n'est PAS un secret, il ne doit exister que sur un
+-- poste de développement local. Contrairement à ce que "compte pré-provisionné"
+-- pourrait laisser penser, il n'y a ICI aucun raccourci d'authentification :
+-- la connexion passe par le flux OTP normal (code aléatoire à 6 chiffres,
+-- haché en BCrypt, TTL 300s, usage unique — voir OtpService), exactement
+-- comme pour n'importe quel compte CLIENT. Le seul élément "en dur" est le
+-- numéro de téléphone lui-même, pas l'authentification.
+--
+-- Ce fichier vit dans db/migration-dev/ (et non db/migration/) : Flyway ne le
+-- scanne QUE si spring.flyway.locations inclut classpath:db/migration-dev, ce
+-- qui n'est activé que sous le profil Spring "dev" (voir application.yml et
+-- docker-compose.yml SPRING_PROFILES_ACTIVE=dev) — même garde-fou que
+-- common.CorsConfig (@Profile("dev")). Sous tout autre profil (par défaut,
+-- donc y compris un déploiement non-labo), cette migration ne s'applique
+-- jamais et ce compte n'existe pas.
+INSERT INTO customer (customer_id, phone_number, display_name, role, password_hash, phone_verified)
+VALUES ('00000000-0000-0000-0000-000000000001', '0700000099', 'Support CIE Lab', 'CIE_OPERATOR', NULL, TRUE);

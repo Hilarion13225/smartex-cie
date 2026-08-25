@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: cie_smart_prepaid_poc
       POSTGRES_USER: poc_user
-      POSTGRES_PASSWORD: poc_password
+      POSTGRES_PASSWORD: "${DB_PASSWORD:-poc_password}"
     ports:
       - "5432:5432"
     volumes:
@@ -20,25 +20,47 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     ports:
-      - "1883:1883"
+      - "8883:8883"
     volumes:
       - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infra/mosquitto/acl.conf:/mosquitto/config/acl.conf:ro
+      - ./infra/mosquitto/certs:/mosquitto/certs:ro
       - mosquitto-data:/mosquitto/data
 
   backend:
     build:
       context: ./backend/poc-backend
     environment:
+      SPRING_PROFILES_ACTIVE: dev
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: cie_smart_prepaid_poc
       DB_USER: poc_user
-      DB_PASSWORD: poc_password
-      MQTT_BROKER_URL: tcp://mosquitto:1883
+      DB_PASSWORD: "${DB_PASSWORD:-poc_password}"
+      # Défaut = secret de labo explicitement marqué "jamais en production" (voir
+      # application.yml) ; surchargeable ici sans toucher au code, ex. déploiement démo.
+      JWT_SECRET: "${JWT_SECRET:-cie-lab-poc-jwt-secret-do-not-use-in-production-change-me}"
+      MQTT_BROKER_URL: ssl://mosquitto:8883
+      MQTT_CA_CERT_PATH: /certs/ca.crt
+      MQTT_CLIENT_CERT_PATH: /certs/backend-gateway.crt
+      MQTT_CLIENT_KEY_PATH: /certs/backend-gateway.key
       MOCK_DONGLE_BASE_URL: http://mock-dongle:9001
       SERVER_PORT: 8080
+      # Défaut 60s (voir application.yml) ; surchargeable pour les tests de recette T13/C04
+      # (fenêtre de validité courte) sans toucher au code, ex:
+      # MQTT_COMMAND_TTL_SECONDS=2 docker compose up -d backend
+      MQTT_COMMAND_TTL_SECONDS: "${MQTT_COMMAND_TTL_SECONDS:-60}"
+      # ALG-01 simplifié (voir TelemetryCollector/CreditAutonomyService) ; défauts en
+      # application.yml, surchargeables pour accélérer une démo/validation, ex:
+      # TELEMETRY_COLLECTION_INTERVAL_SECONDS=8 docker compose up -d backend
+      TELEMETRY_COLLECTION_INTERVAL_SECONDS: "${TELEMETRY_COLLECTION_INTERVAL_SECONDS:-300}"
+      TELEMETRY_LOOKBACK_DAYS: "${TELEMETRY_LOOKBACK_DAYS:-7}"
+      TELEMETRY_MIN_READINGS_FOR_REAL: "${TELEMETRY_MIN_READINGS_FOR_REAL:-3}"
+      TELEMETRY_FALLBACK_DAILY_CONSUMPTION_FCFA: "${TELEMETRY_FALLBACK_DAILY_CONSUMPTION_FCFA:-500}"
     ports:
       - "8080:8080"
+    volumes:
+      - ./infra/mosquitto/certs:/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,10 +74,24 @@ services:
       DEVICE_ID: DONGLE-LAB-0001
       METER_ID: CIE-LAB-0001
       MQTT_HOST: mosquitto
-      MQTT_PORT: "1883"
+      MQTT_PORT: "8883"
+      MQTT_CA_CERT_PATH: /certs/ca.crt
+      MQTT_CLIENT_CERT_PATH: /certs/DONGLE-LAB-0001.crt
+      MQTT_CLIENT_KEY_PATH: /certs/DONGLE-LAB-0001.key
       BACKEND_HEARTBEAT_URL: http://backend:8080/api/v1/devices/DONGLE-LAB-0001/heartbeat
+      # T08: état (crédit, anti-rejeu) persisté sur le volume mock-dongle-data,
+      # survit à un `docker compose restart mock-dongle` (voir dongle.py).
+      STATE_FILE_PATH: /data/meter_state.json
+      # Simulation de consommation pour ALG-01 (voir dongle.py) ; défauts raisonnables
+      # pour une démo, surchargeables pour accélérer une validation, ex:
+      # CONSUMPTION_RATE_FCFA_PER_HOUR=50000 docker compose up -d mock-dongle
+      CONSUMPTION_RATE_FCFA_PER_HOUR: "${CONSUMPTION_RATE_FCFA_PER_HOUR:-150}"
+      CONSUMPTION_TICK_SECONDS: "${CONSUMPTION_TICK_SECONDS:-10}"
     ports:
       - "9001:9001"
+    volumes:
+      - ./infra/mosquitto/certs:/certs:ro
+      - mock-dongle-data:/data
     depends_on:
       - mosquitto
 
@@ -73,3 +109,4 @@ services:
 volumes:
   pg-data:
   mosquitto-data:
+  mock-dongle-data:

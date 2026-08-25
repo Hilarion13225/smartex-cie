@@ -19,14 +19,22 @@ dist/
 # IDE
 .idea/
 .vscode/
+.claude/
 *.iml
 
 # Secrets / env
 .env
 *.env.local
 
+# Certificats de laboratoire (générés par infra/mosquitto/generate-lab-certs.sh)
+# -- contient des clés privées, ne jamais commiter.
+infra/mosquitto/certs/
+
 # Docker
 *.log
+
+# Rapports T14 (résultats de mesure, pas du code -- voir infra/perf/README.md)
+infra/perf/results/
 
 # OS
 .DS_Store
