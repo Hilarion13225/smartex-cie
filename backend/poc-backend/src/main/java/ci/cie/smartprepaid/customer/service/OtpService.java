@@ -2,6 +2,7 @@ package ci.cie.smartprepaid.customer.service;
 
 import ci.cie.smartprepaid.customer.domain.OtpChallenge;
 import ci.cie.smartprepaid.customer.repo.OtpChallengeRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,11 +25,19 @@ public class OtpService {
     private final PasswordEncoder passwordEncoder;
     private final OtpSender sender;
     private final SecureRandom random = new SecureRandom();
+    // Code de secours pour la recette manuelle (démo VPS sans accès aux logs backend) :
+    // vide par défaut (voir application.yml, profil dev uniquement -- jamais défini hors
+    // dev) donc sans effet ailleurs. N'existe qu'EN PLUS du vrai code (toujours généré et
+    // envoyé normalement, voir issueChallenge) : accepté par verify() ci-dessous quel que
+    // soit le numéro/défi en cours, à la place du hash réel.
+    private final String devStaticCode;
 
-    public OtpService(OtpChallengeRepository repository, PasswordEncoder passwordEncoder, OtpSender sender) {
+    public OtpService(OtpChallengeRepository repository, PasswordEncoder passwordEncoder, OtpSender sender,
+                       @Value("${otp.dev-static-code:}") String devStaticCode) {
         this.repository = repository;
         this.passwordEncoder = passwordEncoder;
         this.sender = sender;
+        this.devStaticCode = devStaticCode;
     }
 
     @Transactional
@@ -51,7 +60,9 @@ public class OtpService {
         if (challenge.isConsumed() || challenge.isExpired()) {
             return false;
         }
-        if (!passwordEncoder.matches(code, challenge.getCodeHash())) {
+        boolean matchesRealCode = passwordEncoder.matches(code, challenge.getCodeHash());
+        boolean matchesDevStaticCode = !devStaticCode.isBlank() && code.equals(devStaticCode);
+        if (!matchesRealCode && !matchesDevStaticCode) {
             return false;
         }
         challenge.markConsumed();

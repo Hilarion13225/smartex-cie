@@ -86,3 +86,12 @@ spring:
       on-profile: dev
   flyway:
     locations: classpath:db/migration,classpath:db/migration-dev
+
+# OtpService : code de secours accepté en plus du vrai code OTP (toujours généré/envoyé
+# normalement) -- pratique pour la recette manuelle d'une démo distante sans accès aux logs
+# backend. Uniquement défini ici (profil dev) : absent par défaut, donc sans effet hors dev
+# (voir OtpService.devStaticCode). Surchargeable sans toucher au code, ex. pour ne pas
+# réutiliser la même valeur d'une démo publique à l'autre :
+# OTP_DEV_STATIC_CODE=123456 docker compose up -d backend
+otp:
+  dev-static-code: ${OTP_DEV_STATIC_CODE:000000}
