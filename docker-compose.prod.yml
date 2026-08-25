@@ -2,29 +2,31 @@
 # Usage : docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
 #
 # Ne modifie PAS docker-compose.yml (workflow de dev local inchangé) : ajoute le service
-# frontend (absent en dev, où l'on utilise `npm run dev`) et referme sur 127.0.0.1 les
-# ports qui n'ont aucune raison d'être joignables depuis internet (postgres, mosquitto,
-# mock-dongle, payment-simulator -- seuls consommés en interne par les autres conteneurs).
-# Nécessaire même si le pare-feu (ufw) les bloque déjà : Docker manipule iptables
-# directement pour ses ports publiés, ce qui contourne ufw par défaut -- ne pas compter
-# sur le pare-feu seul pour ça, voir https://github.com/chaifeng/ufw-docker.
+# frontend (absent en dev, où l'on utilise `npm run dev`) et ne publie plus du tout sur
+# l'hôte les ports qui n'ont aucune raison d'être joignables depuis internet (postgres,
+# mosquitto, mock-dongle, payment-simulator -- seuls consommés en interne par les autres
+# conteneurs, qui se joignent par nom de service sur le réseau Docker interne, indépendamment
+# de toute publication de port). `ports: []` remplace entièrement la liste de la base (les
+# séquences ne sont jamais fusionnées entre fichiers compose, contrairement aux maps) --
+# nécessaire même si le pare-feu (ufw) bloque déjà ces ports : Docker manipule iptables
+# directement pour ses ports publiés, ce qui contourne ufw par défaut, voir
+# https://github.com/chaifeng/ufw-docker. Ne pas essayer de republier sur 127.0.0.1 à la
+# place : cette variante déclenche une race condition reproductible dans le démon Docker
+# observée sur ce VPS (des conteneurs sans lien entre eux se voient "Recreate" en boucle et
+# le bind échoue aléatoirement en "address already in use" alors que le port est libre).
 
 services:
   postgres:
-    ports:
-      - "127.0.0.1:5432:5432"
+    ports: []
 
   mosquitto:
-    ports:
-      - "127.0.0.1:8883:8883"
+    ports: []
 
   mock-dongle:
-    ports:
-      - "127.0.0.1:9001:9001"
+    ports: []
 
   payment-simulator:
-    ports:
-      - "127.0.0.1:9000:9000"
+    ports: []
 
   backend:
     environment:
