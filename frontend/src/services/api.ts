@@ -32,16 +32,19 @@ export interface ApiAdapter {
   verifyOtp(phone: string, code: string): Promise<{ verified: boolean; customer: Customer; token: string }>
   // GET /api/v1/customers/me
   getMe(): Promise<Customer>
-  // GET /api/v1/meters/{meterId}/status
+  // GET /api/v1/meters/{meterId}/status — inclut autonomyDays/creditStatus/dataQuality
+  // (ALG-01 simplifié) depuis la branche feature/telemetry-alg01.
   getMeter(meterId: string): Promise<Meter>
-  // GET /api/v1/cie/meters — pas d'équivalent backend, reste mock (voir docs/05 §7)
+  // GET /api/v1/meters (liste, réservé CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN) — un seul meter
+  // existe réellement dans ce PoC, contrairement au jeu de démo mock (10 meters).
   listMeters(): Promise<Meter[]>
-  // GET /api/v1/consumption?period= — pas d'équivalent backend, reste mock
+  // GET /api/v1/meters/{meterId}/consumption — bucketé, reconstruit à partir de vrais
+  // relevés (voir telemetry.service.ConsumptionHistoryService).
   getConsumption(period: string): Promise<ConsumptionPoint[]>
-  // GET /api/v1/recharges/history — pas d'équivalent backend (seul le détail par id existe,
-  // voir getRecharge ci-dessous), reste mock
+  // GET /api/v1/recharges?customerId= — historique des transactions du client connecté
+  // (RealApiAdapter lit customerId depuis le store, pas un paramètre de cette méthode).
   listTransactions(): Promise<Transaction[]>
-  // GET /api/v1/payments/{id} — pas d'équivalent backend, reste mock
+  // Composé à partir de listTransactions() — pas d'endpoint dédié "un seul paiement".
   getTransaction(id: string): Promise<Transaction | undefined>
   // GET /api/v1/recharges/{id} — endpoint réel, protégé (ownership : le CLIENT ne voit que
   // ses propres recharges, CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN voient tout — voir SecurityConfig)
@@ -51,19 +54,22 @@ export interface ApiAdapter {
   listTokens(): Promise<Token[]>
   // GET /api/v1/tokens/{id} — idem
   getToken(id: string): Promise<Token | undefined>
-  // GET /api/v1/alerts — pas d'équivalent backend, reste mock
+  // Dérivé en direct du creditStatus réel (ALG-01, GET /meters/{id}/status) — pas persisté,
+  // pas un moteur d'alerte (incident-service/rules-engine hors scope PoC, voir CLAUDE.md).
   listAlerts(): Promise<Alert[]>
-  // GET /api/v1/cie/incidents — pas d'équivalent backend, reste mock
+  // Pas d'équivalent backend (incident-service explicitement hors scope PoC, voir
+  // CLAUDE.md/README) — reste mock.
   listIncidents(): Promise<Incident[]>
   // GET /api/v1/audit?correlationId= — endpoint réel, réservé CIE_OPERATOR/CIE_ADMIN/
   // DSI_ADMIN (403 sinon). Paramètre obligatoire côté backend (pas de liste non filtrée) :
   // voir AdminAudit pour la recherche par correlationId.
   listAuditEvents(correlationId?: string): Promise<AuditEvent[]>
-  // GET /api/v1/dsi/users — pas d'équivalent backend, reste mock
+  // GET /api/v1/customers (liste, réservé CIE_ADMIN/DSI_ADMIN).
   listUsers(): Promise<DsiUser[]>
-  // GET /api/v1/dsi/devices — pas d'équivalent backend, reste mock
+  // GET /api/v1/devices (liste, réservé CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN).
   listDevices(): Promise<Device[]>
-  // GET /api/v1/dsi/services — pas d'équivalent backend, reste mock
+  // Pas d'équivalent backend : ce PoC est un seul déployable Spring Boot, pas les 6+5
+  // microservices de l'architecture V2 — rien à interroger par "service", reste mock.
   listServices(): Promise<ServiceHealth[]>
 }
 

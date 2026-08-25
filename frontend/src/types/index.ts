@@ -43,6 +43,10 @@ export interface Meter {
   consumptionTodayKwh: number
   location: string
   alertCount: number
+  // Absent côté mock ; renseigné par RealApiAdapter (ALG-01 simplifié, voir
+  // docs/05_reconciliation-api-frontend-backend.md §3) : REAL si l'autonomie est calculée
+  // à partir de vrais relevés, FALLBACK si l'historique est insuffisant.
+  dataQuality?: 'REAL' | 'FALLBACK'
 }
 
 export interface Token {
@@ -161,6 +165,12 @@ export interface MeterStatusResponse {
   onlineStatus: boolean
   creditBalance: number
   creditUnit: string
+  // ALG-01 simplifié (voir CreditAutonomyService, docs/05 §3) : NORMAL/WARNING/CRITICAL/
+  // IMMEDIATE côté backend — 4 valeurs, pas les 5 de CreditStatus (frontend) — voir le
+  // mapping dans realApi.ts.
+  autonomyDays: number
+  creditStatus: string
+  dataQuality: 'REAL' | 'FALLBACK'
 }
 
 export interface DsiUser {

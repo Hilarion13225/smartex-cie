@@ -69,6 +69,9 @@ interface AppState {
   alerts: Alert[]
   pushAlert: (a: Alert) => void
   markAllRead: () => void
+  // Remplace la liste (voir ClientLayout, fetch initial via api.listAlerts() -- en mode
+  // réel, dérivé en direct d'ALG-01, voir RealApiAdapter.listAlerts).
+  setAlerts: (alerts: Alert[]) => void
 
   toasts: Toast[]
   notify: (title: string, message: string, severity?: Toast['severity']) => void
@@ -109,9 +112,13 @@ export const useAppStore = create<AppState>((set) => ({
 
   clearSession: () => { writeStoredToken(null); set({ customer: null, token: null }) },
 
+  // Seed initiale avant le premier fetch (ClientLayout appelle api.listAlerts() au montage
+  // et remplace via setAlerts -- mockAlerts ici uniquement pour ne pas afficher un écran
+  // vide le temps du premier appel réseau en mode mock, où le round-trip est simulé).
   alerts: mockAlerts,
   pushAlert: (a) => set((s) => ({ alerts: [a, ...s.alerts] })),
   markAllRead: () => set((s) => ({ alerts: s.alerts.map((a) => ({ ...a, read: true })) })),
+  setAlerts: (alerts) => set({ alerts }),
 
   toasts: [],
   notify: (title, message, severity = 'INFO') =>

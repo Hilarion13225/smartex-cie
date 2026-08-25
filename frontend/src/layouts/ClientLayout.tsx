@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { Toasts } from '../components/ui'
+import { api } from '../services/api'
 import { useAppStore } from '../stores/app'
 
 const tabs = [
@@ -13,7 +15,10 @@ const tabs = [
 export default function ClientLayout() {
   const navigate = useNavigate()
   const alerts = useAppStore((s) => s.alerts)
+  const setAlerts = useAppStore((s) => s.setAlerts)
   const unread = alerts.filter((a) => !a.read).length
+
+  useEffect(() => { api.listAlerts().then(setAlerts) }, [setAlerts])
   return (
     <div className="min-h-full max-w-md mx-auto bg-[#f6f8fa] relative pb-20">
       <Toasts />

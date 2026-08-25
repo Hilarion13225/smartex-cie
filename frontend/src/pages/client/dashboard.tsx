@@ -15,7 +15,7 @@ function CreditRing({ percent }: { percent: number }) {
         cx="32" cy="32" r={r} fill="none" stroke="#fff" strokeWidth="6" strokeLinecap="round"
         strokeDasharray={c} strokeDashoffset={c * (1 - percent / 100)} transform="rotate(-90 32 32)"
       />
-      <text x="32" y="36" textAnchor="middle" fill="#fff" fontSize="13" fontWeight="700">{percent}%</text>
+      <text x="32" y="36" textAnchor="middle" fill="#fff" fontSize="13" fontWeight="700">{Math.round(percent)}%</text>
     </svg>
   )
 }
