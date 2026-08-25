@@ -8,9 +8,9 @@ Conforme à `docs/02_developer-pack-poc.md` §19_LabProcedure et §20_Acceptance
 |---|---|
 | Date du dossier | 2026-08-25 |
 | Périmètre testé | PoC Laboratoire — backend Spring Boot (`backend/poc-backend`) + simulateurs Python (`payment-simulator`, `mock-dongle`), orchestrés via `docker compose`. **Hors matériel réel** : aucun compteur ni dongle physique CIE, uniquement `MockMeterAdapter` / `mock-dongle`. |
-| Version du repo | Branche `main`, dernier commit **`9bb175e`** ("Fin des premier test Unitaire", 2026-08-24 23:04 UTC) + modifications non commitées de cette série de sessions (voir tableau §2 et note ci-dessous). |
-| Tag Git | Aucun tag n'existe sur ce dépôt à ce jour. |
-| État de commit | ⚠️ **Une partie significative du travail décrit dans ce dossier (hardening mTLS/ACL, correctifs de résilience T07-T09, endpoint T05) n'est pas commitée** : elle existe uniquement dans l'arbre de travail (working tree) au-dessus de `9bb175e`. Le commit `9bb175e` capture uniquement le premier correctif (bug #1, §3) et la validation initiale de T01→T06/T15. Geler une version (commit + tag) avant raccordement réel est un prérequis explicite de §19_LabProcedure point 2 — voir §6. |
+| Version du repo | Branche `main`, commit **`28d9b91`** ("docs: dossier de recette Gate 1..."), historique complet visible via `git log --oneline` (4 commits atomiques par sujet au-dessus de `9bb175e` : T05, mTLS/ACL, résilience T07-T09, dossier de recette). |
+| Tag Git | **`LAB-POC-v0.1.0`** (tag annoté, pointe sur `28d9b91`), conformément à `§06_Repo`. |
+| État de commit | ✅ Tout le travail décrit dans ce dossier est commité et taggé (voir tableau §2 pour les hash exacts par sujet). Chaque commit a été vérifié individuellement buildable (`mvn compile test-compile` / `mvn test` réussis sur chacun via des worktrees temporaires), garantissant un historique bisectable. |
 
 ## 2. Tableau récapitulatif des tests
 
@@ -23,14 +23,15 @@ partiellement couverts et traités séparément, et pour la liste des tests non 
 | T02 | Génération/association du token à la transaction | PASS | `9bb175e` | — |
 | T03 | Transmission MQTT → ACK reçu | PASS avec correction | `9bb175e` | Race condition transaction/MQTT initiale (Bug #1) |
 | T04 | Activation token valide → `ACCEPTED` (MockMeterAdapter) | PASS avec correction | `9bb175e` | Race condition transaction/MQTT initiale (Bug #1) |
-| T05 | Token invalide → `REJECTED`, aucune activation | PASS | *non commité* | — |
+| T05 | Token invalide → `REJECTED`, aucune activation | PASS | `b7145f1` | — |
 | T06 | Double commande (même `commandId`/`idempotencyKey`) → une seule exécution | PASS | `9bb175e` | — |
-| T09 | Coupure/redémarrage du backend | PASS | *non commité* | — (bénéficie indirectement des correctifs #2–#4, découverts et corrigés pendant T07 ; voir §3 et §4) |
+| T09 | Coupure/redémarrage du backend | PASS | `0ca7f7d` | — (bénéficie indirectement des correctifs #2–#4, découverts et corrigés pendant T07 ; voir §3 et §4) |
 | T15 | Auditabilité — trace complète bout en bout | PASS | `9bb175e` | — |
-| C02 | Dongle A tente une commande vers compteur B → rejet par l'ACL du broker (pas par le code applicatif) | PASS | *non commité* | — |
+| C02 | Dongle A tente une commande vers compteur B → rejet par l'ACL du broker (pas par le code applicatif) | PASS | `3f4ee21` | — |
 
-*Colonne "Commit" : `9bb175e` désigne le seul commit existant sur ce dépôt ; "non commité"
-signifie que le code validant ce test n'existe que dans l'arbre de travail actuel (voir §1).*
+*Colonne "Commit" : `9bb175e` = validation initiale T01→T06/T15 ; `b7145f1` = endpoint T05 ;
+`3f4ee21` = mTLS/ACL (dont C02) ; `0ca7f7d` = correctifs de résilience T07-T09. Tous atteignables
+depuis le tag `LAB-POC-v0.1.0`.*
 
 ## 3. Anomalies et corrections
 
@@ -156,8 +157,10 @@ correspondantes, sans ré-analyse du code.
   `docker compose stop/start/restart` (arrêt propre de process). Une coupure secteur/batterie
   réelle sur du matériel physique comporte des risques propres (corruption de flash, état
   électrique indéterminé) qu'un simple redémarrage de conteneur ne peut pas représenter.
-- **Travaux non commités** : voir §1. Une part significative de ce qui est décrit dans ce dossier
-  (sécurité mTLS/ACL, correctifs de résilience T07-T09) n'existe qu'en arbre de travail.
+- **Historique de commits pré-Gate 1** : les 3 tout premiers commits (`6870ff7`, `5f424f3`,
+  `9bb175e`) datent de la mise en place initiale du repo et ne suivent pas le même niveau de
+  granularité par sujet que les 4 commits de cette recette (`b7145f1` à `28d9b91`) ; ils ne sont
+  pas individuellement re-vérifiés ici (seul l'état final, taggé `LAB-POC-v0.1.0`, l'est).
 
 ## 5. Critères d'acceptation Gate 1 (§20_Acceptance)
 
@@ -197,9 +200,8 @@ que par la CIE — ce qui exclut un GO inconditionnel.
 2. **Remplacer la PKI de laboratoire auto-signée** (`infra/mosquitto/generate-lab-certs.sh`,
    explicitement marquée "jamais en production" dans le script lui-même) **par la PKI approuvée
    par la Cybersécurité CIE** avant tout raccordement à un dongle réel.
-3. **Committer et taguer une version figée** de ce travail (actuellement en arbre de travail non
-   commité, §1) — prérequis formel de `§19_LabProcedure` point 2 ("Vérifier version Git/tag +
-   checksums").
+3. ~~Committer et taguer une version figée de ce travail~~ — **fait** : voir §1
+   (commit `28d9b91`, tag `LAB-POC-v0.1.0`), conformément à `§19_LabProcedure` point 2.
 4. **Exécuter formellement T07 selon le scénario littéral** du Developer Pack sur banc réel, et
    définir avec la CIE des critères de résilience convenus (durée max de reprise acceptable,
    etc.) — actuellement non définis.
