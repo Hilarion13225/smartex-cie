@@ -177,9 +177,12 @@ export interface DsiUser {
   userId: string
   name: string
   email: string
+  phone: string
   role: 'CLIENT' | 'CIE_OPERATOR' | 'CIE_ADMIN' | 'DSI_ADMIN'
   status: 'ACTIVE' | 'SUSPENDED'
   lastLogin: string
+  meterId: string
+  contractId: string
 }
 
 export interface Device {

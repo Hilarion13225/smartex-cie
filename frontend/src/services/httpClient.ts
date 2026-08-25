@@ -18,7 +18,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   // false pour les endpoints ouverts (auth/**, meters/**, payments/callback, devices/**) :
   // évite d'envoyer un Authorization inutile et, surtout, évite de déclencher la
@@ -73,4 +73,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 export const http = {
   get: <T>(path: string, auth = true) => request<T>(path, { method: 'GET', auth }),
   post: <T>(path: string, body?: unknown, auth = true) => request<T>(path, { method: 'POST', body, auth }),
+  put: <T>(path: string, body?: unknown, auth = true) => request<T>(path, { method: 'PUT', body, auth }),
+  patch: <T>(path: string, body?: unknown, auth = true) => request<T>(path, { method: 'PATCH', body, auth }),
+  delete: <T>(path: string, auth = true) => request<T>(path, { method: 'DELETE', auth }),
 }

@@ -127,11 +127,11 @@ export const mockAuditEvents: AuditEvent[] = [
 ]
 
 export const mockUsers: DsiUser[] = [
-  { userId: 'ADM-001', name: 'Admin CIE', email: 'admin@cie.ci', role: 'CIE_ADMIN', status: 'ACTIVE', lastLogin: '2026-08-24T22:58:00Z' },
-  { userId: 'OPR-014', name: 'Koffi ASSI', email: 'k.assi@cie.ci', role: 'CIE_OPERATOR', status: 'ACTIVE', lastLogin: '2026-08-24T17:20:00Z' },
-  { userId: 'DSI-002', name: 'Fatou DIALLO', email: 'f.diallo@cie.ci', role: 'DSI_ADMIN', status: 'ACTIVE', lastLogin: '2026-08-24T09:02:00Z' },
-  { userId: 'CUST-001', name: 'Jean KOUADIO', email: 'jean.kouadio@email.com', role: 'CLIENT', status: 'ACTIVE', lastLogin: '2026-08-24T23:05:00Z' },
-  { userId: 'OPR-021', name: 'Awa CISSE', email: 'a.cisse@cie.ci', role: 'CIE_OPERATOR', status: 'SUSPENDED', lastLogin: '2026-07-30T14:11:00Z' },
+  { userId: 'ADM-001', name: 'Admin CIE', email: 'admin@cie.ci', phone: '0700000010', role: 'CIE_ADMIN', status: 'ACTIVE', lastLogin: '2026-08-24T22:58:00Z', meterId: '', contractId: '' },
+  { userId: 'OPR-014', name: 'Koffi ASSI', email: 'k.assi@cie.ci', phone: '0700000011', role: 'CIE_OPERATOR', status: 'ACTIVE', lastLogin: '2026-08-24T17:20:00Z', meterId: '', contractId: '' },
+  { userId: 'DSI-002', name: 'Fatou DIALLO', email: 'f.diallo@cie.ci', phone: '0700000012', role: 'DSI_ADMIN', status: 'ACTIVE', lastLogin: '2026-08-24T09:02:00Z', meterId: '', contractId: '' },
+  { userId: 'CUST-001', name: 'Jean KOUADIO', email: 'jean.kouadio@email.com', phone: '0700000013', role: 'CLIENT', status: 'ACTIVE', lastLogin: '2026-08-24T23:05:00Z', meterId: 'MTR-458921', contractId: '1234567890' },
+  { userId: 'OPR-021', name: 'Awa CISSE', email: 'a.cisse@cie.ci', phone: '0700000014', role: 'CIE_OPERATOR', status: 'SUSPENDED', lastLogin: '2026-07-30T14:11:00Z', meterId: '', contractId: '' },
 ]
 
 export const mockDevices: Device[] = mockMeters.map((m, i) => ({

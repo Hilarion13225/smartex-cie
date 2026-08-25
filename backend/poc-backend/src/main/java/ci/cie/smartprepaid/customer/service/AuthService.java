@@ -66,8 +66,14 @@ public class AuthService {
     }
 
     public void login(String phoneNumber) {
-        customerRepository.findByPhoneNumber(phoneNumber)
+        Customer customer = customerRepository.findByPhoneNumber(phoneNumber)
                 .orElseThrow(() -> new DomainException("NOT_FOUND", "Aucun compte pour ce numéro: " + phoneNumber));
+        // Bloqué avant même l'envoi de l'OTP (module de gestion admin, voir
+        // CustomerController#suspend) -- pas la peine de faire croire qu'une connexion est
+        // possible en envoyant un code qui sera de toute façon refusé à verifyOtp.
+        if (!customer.isActive()) {
+            throw new DomainException("INELIGIBLE", "Ce compte a été suspendu — contactez le support");
+        }
         otpService.issueChallenge(phoneNumber);
     }
 
@@ -78,6 +84,11 @@ public class AuthService {
         }
         Customer customer = customerRepository.findByPhoneNumber(phoneNumber)
                 .orElseThrow(() -> new DomainException("NOT_FOUND", "Aucun compte pour ce numéro: " + phoneNumber));
+        // Filet de sécurité si le compte a été suspendu entre l'envoi de l'OTP et sa
+        // vérification (fenêtre étroite mais réelle, voir TTL de 5 min dans OtpService).
+        if (!customer.isActive()) {
+            throw new DomainException("INELIGIBLE", "Ce compte a été suspendu — contactez le support");
+        }
         customer.markPhoneVerified();
         customer.recordLogin();
         customerRepository.save(customer);

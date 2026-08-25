@@ -3,6 +3,7 @@ package ci.cie.smartprepaid.security;
 import ci.cie.smartprepaid.audit.api.AuditController;
 import ci.cie.smartprepaid.audit.service.AuditService;
 import ci.cie.smartprepaid.customer.api.CustomerController;
+import ci.cie.smartprepaid.customer.domain.Customer;
 import ci.cie.smartprepaid.customer.domain.CustomerRole;
 import ci.cie.smartprepaid.customer.repo.CustomerRepository;
 import ci.cie.smartprepaid.customer.security.SecurityConfig;
@@ -15,6 +16,7 @@ import ci.cie.smartprepaid.device.service.DeviceService;
 import ci.cie.smartprepaid.meteradapter.MeterAdapterPort;
 import ci.cie.smartprepaid.meteradapter.MeterCredit;
 import ci.cie.smartprepaid.meteradapter.MeterStatus;
+import ci.cie.smartprepaid.meter.repo.MeterRepository;
 import ci.cie.smartprepaid.payment.repo.PaymentRepository;
 import ci.cie.smartprepaid.recharge.api.RechargeController;
 import ci.cie.smartprepaid.recharge.domain.CommandStatus;
@@ -33,6 +35,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
@@ -45,6 +48,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -87,6 +91,9 @@ class AuthorizationHttpTest {
 
     @MockBean
     private CustomerRepository customerRepository;
+
+    @MockBean
+    private MeterRepository meterRepository;
 
     @MockBean
     private DeviceRepository deviceRepository;
@@ -291,6 +298,55 @@ class AuthorizationHttpTest {
         mockMvc.perform(get("/api/v1/recharges")
                         .header("Authorization", bearer(UUID.randomUUID(), CustomerRole.CIE_OPERATOR)))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void client_nePeutPasSuspendreUnCompte() throws Exception {
+        mockMvc.perform(post("/api/v1/customers/" + UUID.randomUUID() + "/suspend")
+                        .header("Authorization", bearer(UUID.randomUUID(), CustomerRole.CLIENT)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void operateurCie_nePeutPasSuspendreUnCompte() throws Exception {
+        // Meme matrice que "Gerer utilisateurs & roles" (AdminUsers.tsx) : reserve
+        // CIE_ADMIN/DSI_ADMIN, pas CIE_OPERATOR.
+        mockMvc.perform(post("/api/v1/customers/" + UUID.randomUUID() + "/suspend")
+                        .header("Authorization", bearer(UUID.randomUUID(), CustomerRole.CIE_OPERATOR)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminCie_peutSuspendreUnCompte() throws Exception {
+        UUID target = UUID.randomUUID();
+        Customer customer = new Customer("0700000001", "Jean", CustomerRole.CLIENT, null);
+        when(customerRepository.findById(target)).thenReturn(Optional.of(customer));
+
+        mockMvc.perform(post("/api/v1/customers/" + target + "/suspend")
+                        .header("Authorization", bearer(UUID.randomUUID(), CustomerRole.CIE_ADMIN)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void dsiAdmin_peutChangerLeRoleDunCompte() throws Exception {
+        UUID target = UUID.randomUUID();
+        Customer customer = new Customer("0700000001", "Jean", CustomerRole.CLIENT, null);
+        when(customerRepository.findById(target)).thenReturn(Optional.of(customer));
+
+        mockMvc.perform(patch("/api/v1/customers/" + target + "/role")
+                        .header("Authorization", bearer(UUID.randomUUID(), CustomerRole.DSI_ADMIN))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"CIE_OPERATOR\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void client_nePeutPasCreerUnCompteOperateur() throws Exception {
+        mockMvc.perform(post("/api/v1/customers")
+                        .header("Authorization", bearer(UUID.randomUUID(), CustomerRole.CLIENT))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phoneNumber\":\"0700000002\",\"displayName\":\"Op\",\"role\":\"CIE_OPERATOR\"}"))
+                .andExpect(status().isForbidden());
     }
 
     private String bearer(UUID customerId, CustomerRole role) {

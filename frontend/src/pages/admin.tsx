@@ -5,12 +5,168 @@ import type { AuditEvent, Device, DsiUser, MeterRegistryEntry, RechargeDetail, S
 import { fmtFcfa } from '../types'
 import { Badge, Button, Card, KpiCard, MeterStatusBadge, RechargeStatusBadge, Skeleton } from '../components/ui'
 
+const ROLES: DsiUser['role'][] = ['CLIENT', 'CIE_OPERATOR', 'CIE_ADMIN', 'DSI_ADMIN']
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : err instanceof Error ? err.message : fallback
+}
+
+// Détail + actions d'un compte sélectionné (module de gestion admin, voir
+// CustomerController côté backend : changement de rôle, suspension, association
+// compteur). Réservé CIE_ADMIN/DSI_ADMIN comme le reste de cet écran.
+function UserDetailPanel({ user, onChanged, onClose }: { user: DsiUser; onChanged: (u: DsiUser) => void; onClose: () => void }) {
+  const [role, setRole] = useState(user.role)
+  const [meterId, setMeterId] = useState(user.meterId)
+  const [contractId, setContractId] = useState(user.contractId)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = async (key: string, action: () => Promise<DsiUser>) => {
+    setBusy(key)
+    setError(null)
+    try {
+      onChanged(await action())
+    } catch (err) {
+      setError(errorMessage(err, 'Action impossible'))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Card className="p-5 space-y-4 border-2 border-cie-200">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-bold text-gray-900">{user.name}</p>
+          <p className="text-xs text-gray-400">{user.userId} · {user.phone}{user.email && ` · ${user.email}`}</p>
+        </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
+      </div>
+
+      {error && <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-3">{error}</div>}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Rôle</p>
+          <div className="flex gap-2">
+            <select value={role} onChange={(e) => setRole(e.target.value as DsiUser['role'])}
+                    className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cie-500">
+              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <Button onClick={() => run('role', () => api.changeUserRole(user.userId, role))}
+                    disabled={busy !== null || role === user.role}>
+              {busy === 'role' ? '...' : 'Changer'}
+            </Button>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Statut du compte</p>
+          {user.status === 'ACTIVE' ? (
+            <Button variant="secondary" onClick={() => run('suspend', () => api.suspendUser(user.userId))} disabled={busy !== null}>
+              {busy === 'suspend' ? '...' : '⏸ Suspendre'}
+            </Button>
+          ) : (
+            <Button onClick={() => run('reactivate', () => api.reactivateUser(user.userId))} disabled={busy !== null}>
+              {busy === 'reactivate' ? '...' : '▶ Réactiver'}
+            </Button>
+          )}
+        </div>
+
+        <div className="sm:col-span-2">
+          <p className="text-xs text-gray-500 mb-1">Compteur associé</p>
+          {user.meterId && (
+            <p className="text-xs text-gray-400 mb-2">
+              Actuellement : <span className="font-mono font-semibold text-gray-700">{user.meterId}</span>
+              {user.contractId && <> · contrat {user.contractId}</>}
+            </p>
+          )}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input value={meterId} onChange={(e) => setMeterId(e.target.value)} placeholder="Numéro de compteur"
+                   className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-cie-500" />
+            <input value={contractId} onChange={(e) => setContractId(e.target.value)} placeholder="Numéro de contrat (optionnel)"
+                   className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cie-500" />
+            <Button onClick={() => run('assign', () => api.assignUserMeter(user.userId, meterId.trim(), contractId.trim() || undefined))}
+                    disabled={busy !== null || !meterId.trim()}>
+              {busy === 'assign' ? '...' : 'Assigner'}
+            </Button>
+            {user.meterId && (
+              <Button variant="secondary" onClick={() => run('unassign', () => api.unassignUserMeter(user.userId))} disabled={busy !== null}>
+                {busy === 'unassign' ? '...' : 'Retirer'}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function CreateOperatorForm({ onCreated }: { onCreated: () => void }) {
+  const [phone, setPhone] = useState('')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState<DsiUser['role']>('CIE_OPERATOR')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const create = async () => {
+    if (!phone.trim() || !name.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      await api.createOperator(phone.trim(), name.trim(), role, email.trim() || undefined)
+      setPhone(''); setName(''); setEmail('')
+      onCreated()
+    } catch (err) {
+      setError(errorMessage(err, 'Création impossible'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="p-5">
+      <p className="font-semibold text-sm mb-1">Créer un compte opérateur / admin</p>
+      <p className="text-xs text-gray-400 mb-4">
+        Contrairement à l'auto-inscription (toujours CLIENT), crée directement un compte
+        avec le rôle choisi — il se connecte ensuite normalement (téléphone + OTP).
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Numéro de téléphone"
+               className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-cie-500" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nom complet"
+               className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-cie-500" />
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optionnel)"
+               className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-cie-500" />
+        <select value={role} onChange={(e) => setRole(e.target.value as DsiUser['role'])}
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-cie-500">
+          {ROLES.filter((r) => r !== 'CLIENT').map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </div>
+      <Button onClick={create} disabled={saving || !phone.trim() || !name.trim()}>
+        {saving ? 'Création...' : 'Créer le compte'}
+      </Button>
+      {error && <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-3 mt-3">{error}</div>}
+    </Card>
+  )
+}
+
 export function AdminUsers() {
   const [users, setUsers] = useState<DsiUser[] | null>(null)
-  useEffect(() => { api.listUsers().then(setUsers) }, [])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const load = () => api.listUsers().then(setUsers)
+  useEffect(() => { load() }, [])
+
   const roleColor: Record<DsiUser['role'], string> = {
     CLIENT: 'blue', CIE_OPERATOR: 'green', CIE_ADMIN: 'purple', DSI_ADMIN: 'orange',
   }
+  const selected = users?.find((u) => u.userId === selectedId) ?? null
+
+  const applyChange = (updated: DsiUser) => {
+    setUsers((prev) => prev?.map((u) => (u.userId === updated.userId ? updated : u)) ?? prev)
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -19,22 +175,36 @@ export function AdminUsers() {
         <KpiCard label="Suspendus" value={(users?.filter((u) => u.status === 'SUSPENDED').length ?? 0).toString()} subColor="text-red-500" />
         <KpiCard label="Rôles" value="4" sub="CLIENT · OPERATOR · CIE_ADMIN · DSI_ADMIN" />
       </div>
+
+      <CreateOperatorForm onCreated={load} />
+
+      {selected && (
+        <UserDetailPanel
+          user={selected}
+          onChanged={applyChange}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
+
       <Card className="overflow-x-auto">
         {!users ? <Skeleton className="h-64 m-4" /> : (
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-gray-400 text-left border-b border-gray-100">
-                <th className="px-4 py-3">Utilisateur</th><th>Email</th><th>Rôle</th><th>Statut</th><th>Dernière connexion</th>
+                <th className="px-4 py-3">Utilisateur</th><th>Email</th><th>Rôle</th><th>Statut</th><th>Compteur</th><th>Dernière connexion</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.userId} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-3"><p className="font-semibold">{u.name}</p><p className="text-[11px] text-gray-400">{u.userId}</p></td>
-                  <td>{u.email}</td>
+                <tr key={u.userId}
+                    onClick={() => setSelectedId(u.userId === selectedId ? null : u.userId)}
+                    className={`border-b border-gray-50 hover:bg-gray-50/50 cursor-pointer ${u.userId === selectedId ? 'bg-cie-50/60' : ''}`}>
+                  <td className="px-4 py-3"><p className="font-semibold">{u.name}</p><p className="text-[11px] text-gray-400">{u.userId} · {u.phone}</p></td>
+                  <td>{u.email || '—'}</td>
                   <td><Badge color={roleColor[u.role]}>{u.role}</Badge></td>
                   <td><Badge color={u.status === 'ACTIVE' ? 'green' : 'red'}>{u.status}</Badge></td>
-                  <td className="text-xs text-gray-500">{new Date(u.lastLogin).toLocaleString('fr-FR')}</td>
+                  <td className="font-mono text-xs">{u.meterId || '—'}</td>
+                  <td className="text-xs text-gray-500">{u.lastLogin ? new Date(u.lastLogin).toLocaleString('fr-FR') : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -70,37 +240,6 @@ export function AdminUsers() {
   )
 }
 
-export function AdminDevices() {
-  const [devices, setDevices] = useState<Device[] | null>(null)
-  useEffect(() => { api.listDevices().then(setDevices) }, [])
-  const credColor: Record<Device['credentialStatus'], string> = { VALID: 'green', EXPIRING: 'orange', REVOKED: 'red' }
-  return (
-    <Card className="overflow-x-auto">
-      {!devices ? <Skeleton className="h-64 m-4" /> : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-xs text-gray-400 text-left border-b border-gray-100">
-              <th className="px-4 py-3">Dongle</th><th>Compteur</th><th>Firmware</th><th>Statut</th><th>Credential mTLS</th><th>Vu pour la dernière fois</th>
-            </tr>
-          </thead>
-          <tbody>
-            {devices.map((d) => (
-              <tr key={d.deviceId} className="border-b border-gray-50 hover:bg-gray-50/50">
-                <td className="px-4 py-3 font-semibold">{d.deviceId}</td>
-                <td>{d.meterId}</td>
-                <td className="font-mono text-xs">{d.firmware}</td>
-                <td><MeterStatusBadge status={d.status} /></td>
-                <td><Badge color={credColor[d.credentialStatus]}>{d.credentialStatus}</Badge></td>
-                <td className="text-xs text-gray-500">{new Date(d.lastSeen).toLocaleString('fr-FR')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Card>
-  )
-}
-
 // Registre des compteurs connus de la CIE (voir meter.domain.Meter côté backend) --
 // distinct de AdminDevices (les dongles) : un compteur peut être enregistré ici avant
 // même qu'un dongle y soit installé (rollout réel typique). Base de la validation
@@ -125,7 +264,7 @@ export function AdminMeters() {
       setLabel('')
       await load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Enregistrement impossible')
+      setError(errorMessage(err, 'Enregistrement impossible'))
     } finally {
       setSaving(false)
     }
@@ -187,6 +326,37 @@ export function AdminMeters() {
         )}
       </Card>
     </div>
+  )
+}
+
+export function AdminDevices() {
+  const [devices, setDevices] = useState<Device[] | null>(null)
+  useEffect(() => { api.listDevices().then(setDevices) }, [])
+  const credColor: Record<Device['credentialStatus'], string> = { VALID: 'green', EXPIRING: 'orange', REVOKED: 'red' }
+  return (
+    <Card className="overflow-x-auto">
+      {!devices ? <Skeleton className="h-64 m-4" /> : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs text-gray-400 text-left border-b border-gray-100">
+              <th className="px-4 py-3">Dongle</th><th>Compteur</th><th>Firmware</th><th>Statut</th><th>Credential mTLS</th><th>Vu pour la dernière fois</th>
+            </tr>
+          </thead>
+          <tbody>
+            {devices.map((d) => (
+              <tr key={d.deviceId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                <td className="px-4 py-3 font-semibold">{d.deviceId}</td>
+                <td>{d.meterId}</td>
+                <td className="font-mono text-xs">{d.firmware}</td>
+                <td><MeterStatusBadge status={d.status} /></td>
+                <td><Badge color={credColor[d.credentialStatus]}>{d.credentialStatus}</Badge></td>
+                <td className="text-xs text-gray-500">{new Date(d.lastSeen).toLocaleString('fr-FR')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
   )
 }
 

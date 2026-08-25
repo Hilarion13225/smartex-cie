@@ -39,12 +39,30 @@ interface BackendCustomer {
   email: string | null
   meterId: string | null
   contractId: string | null
+  active: boolean
 }
 
 // Le rôle backend est réel et utile (ex: navigation post-login) même si le type frontend
 // partagé `Customer` (mock-first) ne le déclare pas — étendu ici plutôt que dans types/
 // pour ne pas faire croire que MockApiAdapter le fournit aussi.
 export type RealCustomer = Customer & { role: BackendRole }
+
+// Module de gestion admin (AdminUsers.tsx) : DsiUser est le type frontend historique
+// (mock-first) pour cet écran -- réutilisé tel quel plutôt que d'en inventer un nouveau,
+// mappé depuis le même BackendCustomer que mapCustomer ci-dessous.
+function mapDsiUser(c: BackendCustomer): DsiUser {
+  return {
+    userId: c.customerId,
+    name: c.displayName,
+    email: c.email ?? '',
+    phone: c.phoneNumber,
+    role: c.role,
+    status: c.active ? 'ACTIVE' : 'SUSPENDED',
+    lastLogin: c.lastLoginAt ?? '',
+    meterId: c.meterId ?? '',
+    contractId: c.contractId ?? '',
+  }
+}
 
 function mapCustomer(c: BackendCustomer): RealCustomer {
   const [firstName, ...rest] = c.displayName.split(' ')
@@ -361,16 +379,42 @@ export class RealApiAdapter implements ApiAdapter {
   // GET /api/v1/customers (liste, réservé CIE_ADMIN/DSI_ADMIN).
   async listUsers(): Promise<DsiUser[]> {
     const customers = await http.get<BackendCustomer[]>('/api/v1/customers')
-    return customers.map((c) => ({
-      userId: c.customerId,
-      name: c.displayName,
-      email: '', // pas de champ email côté backend (voir mapCustomer)
-      role: c.role,
-      // Aucun mécanisme de suspension côté backend aujourd'hui -- toujours ACTIVE, valeur
-      // neutre documentée plutôt qu'inventée (voir docs/05).
-      status: 'ACTIVE',
-      lastLogin: c.lastLoginAt ?? '',
-    }))
+    return customers.map(mapDsiUser)
+  }
+
+  // GET /api/v1/customers/{id} (admin -- voir CustomerController#get).
+  async getUser(id: string): Promise<DsiUser> {
+    return mapDsiUser(await http.get<BackendCustomer>(`/api/v1/customers/${id}`))
+  }
+
+  // POST /api/v1/customers (admin -- crée directement un compte opérateur/admin, sans
+  // passer par l'auto-inscription client). Pas de mot de passe/OTP à ce stade : le compte
+  // se connecte ensuite par le flux normal (login + OTP), voir CustomerController#create.
+  async createOperator(phoneNumber: string, displayName: string, role: string, email?: string): Promise<DsiUser> {
+    return mapDsiUser(await http.post<BackendCustomer>('/api/v1/customers', { phoneNumber, displayName, role, email }))
+  }
+
+  async changeUserRole(id: string, role: string): Promise<DsiUser> {
+    return mapDsiUser(await http.patch<BackendCustomer>(`/api/v1/customers/${id}/role`, { role }))
+  }
+
+  async suspendUser(id: string): Promise<DsiUser> {
+    return mapDsiUser(await http.post<BackendCustomer>(`/api/v1/customers/${id}/suspend`))
+  }
+
+  async reactivateUser(id: string): Promise<DsiUser> {
+    return mapDsiUser(await http.post<BackendCustomer>(`/api/v1/customers/${id}/reactivate`))
+  }
+
+  // Assignation/réassignation de compteur (voir CustomerController#assignMeter) : mêmes
+  // règles de validation qu'à l'inscription (meterId doit exister dans le registre `meter`
+  // et ne pas être déjà lié à un AUTRE client).
+  async assignUserMeter(id: string, meterId: string, contractId?: string): Promise<DsiUser> {
+    return mapDsiUser(await http.put<BackendCustomer>(`/api/v1/customers/${id}/meter`, { meterId, contractId }))
+  }
+
+  async unassignUserMeter(id: string): Promise<DsiUser> {
+    return mapDsiUser(await http.delete<BackendCustomer>(`/api/v1/customers/${id}/meter`))
   }
 
   // GET /api/v1/devices (liste, réservé CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN).

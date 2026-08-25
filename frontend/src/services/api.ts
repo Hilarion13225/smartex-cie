@@ -27,6 +27,11 @@ let mockMeterRegistry: MeterRegistryEntry[] = [
     hasDevice: true, claimedByCustomerId: null },
 ]
 
+// Copie mutable de mockUsers (mode mock uniquement) : reflète les actions admin (rôle,
+// suspension, compteur) faites dans la session en cours -- voir services correspondants
+// de MockApiAdapter ci-dessous.
+let mockUsersState: DsiUser[] = mockUsers.map((u) => ({ ...u }))
+
 export interface ApiAdapter {
   // POST /api/v1/auth/login — backend OTP-only (voir CustomerRole/AuthService) : pas de
   // mot de passe, ne fait que déclencher l'envoi d'un OTP. L'authentification effective
@@ -79,6 +84,16 @@ export interface ApiAdapter {
   listAuditEvents(correlationId?: string): Promise<AuditEvent[]>
   // GET /api/v1/customers (liste, réservé CIE_ADMIN/DSI_ADMIN).
   listUsers(): Promise<DsiUser[]>
+  // Module de gestion admin (CIE_ADMIN/DSI_ADMIN, voir CustomerController) : détail,
+  // création directe d'un compte opérateur/admin, changement de rôle, suspension,
+  // assignation/réassignation de compteur.
+  getUser(id: string): Promise<DsiUser>
+  createOperator(phoneNumber: string, displayName: string, role: string, email?: string): Promise<DsiUser>
+  changeUserRole(id: string, role: string): Promise<DsiUser>
+  suspendUser(id: string): Promise<DsiUser>
+  reactivateUser(id: string): Promise<DsiUser>
+  assignUserMeter(id: string, meterId: string, contractId?: string): Promise<DsiUser>
+  unassignUserMeter(id: string): Promise<DsiUser>
   // GET /api/v1/devices (liste, réservé CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN).
   listDevices(): Promise<Device[]>
   // Pas d'équivalent backend : ce PoC est un seul déployable Spring Boot, pas les 6+5
@@ -146,7 +161,48 @@ class MockApiAdapter implements ApiAdapter {
   async listAlerts() { await delay(500); return mockAlerts }
   async listIncidents() { await delay(600); return mockIncidents }
   async listAuditEvents(_correlationId?: string) { await delay(550); return mockAuditEvents }
-  async listUsers() { await delay(500); return mockUsers }
+  async listUsers() { await delay(500); return mockUsersState }
+  async getUser(id: string) {
+    await delay(300)
+    const u = mockUsersState.find((x) => x.userId === id)
+    if (!u) throw new Error(`Client introuvable: ${id}`)
+    return u
+  }
+  async createOperator(phoneNumber: string, displayName: string, role: string, email?: string) {
+    await delay(400)
+    if (mockUsersState.some((u) => u.phone === phoneNumber)) {
+      throw new Error(`Un compte existe déjà pour ce numéro: ${phoneNumber}`)
+    }
+    const u: DsiUser = {
+      userId: `USR-${Date.now()}`, name: displayName, email: email ?? '', phone: phoneNumber,
+      role: role as DsiUser['role'], status: 'ACTIVE', lastLogin: '', meterId: '', contractId: '',
+    }
+    mockUsersState = [u, ...mockUsersState]
+    return u
+  }
+  async changeUserRole(id: string, role: string) {
+    await delay(300)
+    return this.updateUser(id, { role: role as DsiUser['role'] })
+  }
+  async suspendUser(id: string) { await delay(300); return this.updateUser(id, { status: 'SUSPENDED' }) }
+  async reactivateUser(id: string) { await delay(300); return this.updateUser(id, { status: 'ACTIVE' }) }
+  async assignUserMeter(id: string, meterId: string, contractId?: string) {
+    await delay(300)
+    const other = mockUsersState.find((u) => u.meterId === meterId && u.userId !== id)
+    if (other) throw new Error(`Ce compteur est déjà associé à un autre compte: ${meterId}`)
+    return this.updateUser(id, { meterId, contractId: contractId ?? '' })
+  }
+  async unassignUserMeter(id: string) {
+    await delay(300)
+    return this.updateUser(id, { meterId: '', contractId: '' })
+  }
+  private updateUser(id: string, patch: Partial<DsiUser>): DsiUser {
+    const idx = mockUsersState.findIndex((u) => u.userId === id)
+    if (idx === -1) throw new Error(`Client introuvable: ${id}`)
+    const updated = { ...mockUsersState[idx], ...patch }
+    mockUsersState = mockUsersState.map((u, i) => (i === idx ? updated : u))
+    return updated
+  }
   async listDevices() { await delay(550); return mockDevices }
   async listServices() { await delay(450); return mockServices }
   async listMeterRegistry() { await delay(400); return mockMeterRegistry }

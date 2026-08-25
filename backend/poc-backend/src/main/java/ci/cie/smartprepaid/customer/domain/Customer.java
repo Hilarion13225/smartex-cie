@@ -61,6 +61,11 @@ public class Customer {
     @Column(name = "contract_id")
     private String contractId;
 
+    /** Suspension de compte (module de gestion admin, voir CustomerController) : un compte
+     * suspendu ne peut plus se connecter (voir AuthService.login) sans être supprimé. */
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
+
     protected Customer() {
         // JPA
     }
@@ -92,6 +97,29 @@ public class Customer {
         this.contractId = contractId;
     }
 
+    /** Détache ce client de son compteur (module de gestion admin) -- le compteur reste
+     * dans le registre `meter`, seulement disponible pour une nouvelle association. */
+    public void unlinkMeter() {
+        this.meterId = null;
+        this.contractId = null;
+    }
+
+    /** Changement de rôle (module de gestion admin, voir CustomerController) -- une session
+     * déjà ouverte (JWT existant) garde l'ancien rôle jusqu'à sa prochaine connexion, le rôle
+     * étant encodé dans le token au moment de son émission (voir JwtService), pas relu à
+     * chaque requête -- limite connue, acceptable pour ce PoC. */
+    public void changeRole(CustomerRole role) {
+        this.role = role;
+    }
+
+    public void suspend() {
+        this.active = false;
+    }
+
+    public void reactivate() {
+        this.active = true;
+    }
+
     public UUID getCustomerId() { return customerId; }
     public String getPhoneNumber() { return phoneNumber; }
     public String getDisplayName() { return displayName; }
@@ -103,4 +131,5 @@ public class Customer {
     public String getEmail() { return email; }
     public String getMeterId() { return meterId; }
     public String getContractId() { return contractId; }
+    public boolean isActive() { return active; }
 }
