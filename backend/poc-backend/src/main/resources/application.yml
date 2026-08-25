@@ -34,6 +34,14 @@ mqtt:
 meter-adapter:
   mock-dongle-base-url: ${MOCK_DONGLE_BASE_URL:http://localhost:9001}
 
+# TelemetryCollector + CreditAutonomyService (ALG-01 simplifié, voir
+# ci.cie.smartprepaid.telemetry.service.CreditAutonomyService pour le détail du calcul).
+telemetry:
+  collection-interval-seconds: ${TELEMETRY_COLLECTION_INTERVAL_SECONDS:300}
+  lookback-days: ${TELEMETRY_LOOKBACK_DAYS:7}
+  min-readings-for-real: ${TELEMETRY_MIN_READINGS_FOR_REAL:3}
+  fallback-daily-consumption-fcfa: ${TELEMETRY_FALLBACK_DAILY_CONSUMPTION_FCFA:500}
+
 # CommandExpiryWatcher (T07/T09 - voir Javadoc de la classe) : le premier passage
 # est retardé pour laisser le temps à la session MQTT persistante (cleanSession=false)
 # de redélivrer les ACK en attente avant que le watcher ne les traite comme TIMEOUT.
