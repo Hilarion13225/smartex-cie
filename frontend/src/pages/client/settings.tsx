@@ -7,7 +7,7 @@ import { Button, Card, PageHeader, SeverityDot, Toggle } from '../../components/
 
 export function AlertsPage() {
   const navigate = useNavigate()
-  const { alerts, markAllRead, prefs, setPref } = useAppStore()
+  const { alerts, markAllRead, removeAlert, prefs, setPref } = useAppStore()
 
   const prefRows: { key: keyof NotificationPrefs; label: string }[] = [
     { key: 'lowCredit', label: 'Crédit faible' },
@@ -27,14 +27,25 @@ export function AlertsPage() {
       />
       <div className="px-5 py-4 space-y-4">
         <div className="space-y-2.5">
+          {alerts.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-6">Aucune alerte pour le moment.</p>
+          )}
           {alerts.map((a) => (
             <Card key={a.alertId} className={`p-4 flex items-start gap-3 ${!a.read ? 'border-l-4 border-l-cie-500' : ''}`}>
               <SeverityDot severity={a.severity} />
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-800">{a.type.replace(/_/g, ' ')}</p>
                 <p className="text-xs text-gray-500 mt-0.5">{a.message}</p>
                 <p className="text-[10px] text-gray-400 mt-1">{new Date(a.createdAt).toLocaleString('fr-FR')} · {a.meterId}</p>
               </div>
+              <button
+                onClick={() => removeAlert(a.alertId)}
+                aria-label="Supprimer l'alerte"
+                title="Supprimer"
+                className="text-gray-300 hover:text-red-500 text-lg leading-none px-1 flex-shrink-0"
+              >
+                🗑
+              </button>
             </Card>
           ))}
         </div>
@@ -139,13 +150,13 @@ export function ProfilePage() {
 
 export function DemoPage() {
   const navigate = useNavigate()
-  const { notify, pushAlert } = useAppStore()
+  const { notify } = useAppStore()
   const meterId = 'MTR-458921'
 
+  // notify() enregistre aussi l'alerte automatiquement (voir stores/app.ts).
   const fire = (label: string, severity: 'SUCCESS' | 'WARNING' | 'CRITICAL' | 'INFO', type: string, message: string) => {
     mqttMock.emit(type as never, meterId, {})
-    pushAlert({ alertId: `AL-${Date.now()}`, meterId, type, severity, message, createdAt: new Date().toISOString(), read: false })
-    notify(label, message, severity)
+    notify(label, message, severity, type, meterId)
   }
 
   const actions: [string, () => void][] = [

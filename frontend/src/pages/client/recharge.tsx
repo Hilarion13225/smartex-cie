@@ -320,7 +320,6 @@ export function RechargeStatus() {
   const navigate = useNavigate()
   const { recharge, outcome } = useRechargeStore()
   const notify = useAppStore((s) => s.notify)
-  const pushAlert = useAppStore((s) => s.pushAlert)
   const [detail, setDetail] = useState<RechargeDetail | null>(null)
   const [stillWaiting, setStillWaiting] = useState(false)
 
@@ -359,12 +358,13 @@ export function RechargeStatus() {
   const failAt = 4
 
   useEffect(() => {
+    // notify() enregistre aussi l'alerte automatiquement (voir stores/app.ts) -- plus
+    // besoin d'un pushAlert séparé ici, type/meterId passés explicitement.
     if (done && recharge) {
-      notify('Recharge réussie !', `${fmtFcfa(recharge.amount)} — crédit mis à jour sur ${recharge.meterId}`, 'SUCCESS')
-      pushAlert({
-        alertId: `AL-${Date.now()}`, meterId: recharge.meterId, type: 'RECHARGE_SUCCESS', severity: 'SUCCESS',
-        message: `Recharge de ${fmtFcfa(recharge.amount)} appliquée avec succès`, createdAt: new Date().toISOString(), read: false,
-      })
+      notify(
+        'Recharge réussie !', `${fmtFcfa(recharge.amount)} — crédit mis à jour sur ${recharge.meterId}`,
+        'SUCCESS', 'RECHARGE_SUCCESS', recharge.meterId,
+      )
     }
     if (failed && recharge) {
       notify(
@@ -372,6 +372,8 @@ export function RechargeStatus() {
         status === 'FALLBACK_TOKEN_SENT'
           ? 'Le compteur n’a pas confirmé automatiquement.' : 'Le compteur a rejeté la commande.',
         'WARNING',
+        status === 'FALLBACK_TOKEN_SENT' ? 'INJECTION_FAILED' : 'COMMAND_REJECTED',
+        recharge.meterId,
       )
     }
   }, [done, failed]) // eslint-disable-line react-hooks/exhaustive-deps
