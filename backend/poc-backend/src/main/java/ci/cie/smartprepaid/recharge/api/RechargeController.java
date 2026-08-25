@@ -1,9 +1,13 @@
 package ci.cie.smartprepaid.recharge.api;
 
+import ci.cie.smartprepaid.payment.domain.Payment;
 import ci.cie.smartprepaid.payment.repo.PaymentRepository;
+import ci.cie.smartprepaid.recharge.domain.Recharge;
 import ci.cie.smartprepaid.recharge.dto.RechargeDetailResponse;
 import ci.cie.smartprepaid.recharge.dto.RechargeRequest;
 import ci.cie.smartprepaid.recharge.dto.RechargeResponse;
+import ci.cie.smartprepaid.recharge.dto.RechargeSummaryResponse;
+import ci.cie.smartprepaid.recharge.repo.RechargeRepository;
 import ci.cie.smartprepaid.recharge.service.RechargeOrchestrator;
 import jakarta.validation.Valid;
 import org.slf4j.MDC;
@@ -13,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import ci.cie.smartprepaid.common.CorrelationIdFilter;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -22,10 +27,13 @@ public class RechargeController {
 
     private final RechargeOrchestrator orchestrator;
     private final PaymentRepository paymentRepository;
+    private final RechargeRepository rechargeRepository;
 
-    public RechargeController(RechargeOrchestrator orchestrator, PaymentRepository paymentRepository) {
+    public RechargeController(RechargeOrchestrator orchestrator, PaymentRepository paymentRepository,
+                               RechargeRepository rechargeRepository) {
         this.orchestrator = orchestrator;
         this.paymentRepository = paymentRepository;
+        this.rechargeRepository = rechargeRepository;
     }
 
     @PostMapping("/recharges")
@@ -55,6 +63,28 @@ public class RechargeController {
                 .map(p -> p.getStatus().name())
                 .orElse(null);
         return RechargeDetailResponse.from(recharge, commands, paymentStatus);
+    }
+
+    // Historique des transactions (écran "Transactions" frontend, ou supervision CIE fleet-
+    // wide). customerId omis : uniquement pour les rôles support (fleet complète) -- un
+    // CLIENT doit toujours préciser son propre customerId (ownership, même règle que GET
+    // /recharges/{id}). customerId fourni et différent du sujet du JWT pour un CLIENT :
+    // refusé, même logique que ci-dessus.
+    @PreAuthorize("hasAnyRole('CIE_OPERATOR','CIE_ADMIN','DSI_ADMIN') "
+            + "or (#customerId != null and #customerId == authentication.name)")
+    @GetMapping("/recharges")
+    public List<RechargeSummaryResponse> list(@RequestParam(required = false) String customerId) {
+        List<Recharge> recharges = customerId != null
+                ? rechargeRepository.findByCustomerIdOrderByCreatedAtDesc(customerId)
+                : rechargeRepository.findAllByOrderByCreatedAtDesc();
+        return recharges.stream().map(this::toSummary).toList();
+    }
+
+    private RechargeSummaryResponse toSummary(Recharge recharge) {
+        String provider = paymentRepository.findById(recharge.getPaymentId())
+                .map(Payment::getProvider)
+                .orElse(null);
+        return RechargeSummaryResponse.from(recharge, provider);
     }
 
     @PostMapping("/commands/{id}/retry")

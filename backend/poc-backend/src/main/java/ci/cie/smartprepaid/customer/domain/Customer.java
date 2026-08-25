@@ -40,6 +40,11 @@ public class Customer {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
+    /** Dernière connexion réussie (OTP vérifié) — voir AuthService#verifyOtp. Null tant
+     * qu'aucune connexion n'a encore eu lieu (juste après l'inscription). */
+    @Column(name = "last_login_at")
+    private Instant lastLoginAt;
+
     protected Customer() {
         // JPA
     }
@@ -55,6 +60,10 @@ public class Customer {
         this.phoneVerified = true;
     }
 
+    public void recordLogin() {
+        this.lastLoginAt = Instant.now();
+    }
+
     public UUID getCustomerId() { return customerId; }
     public String getPhoneNumber() { return phoneNumber; }
     public String getDisplayName() { return displayName; }
@@ -62,4 +71,5 @@ public class Customer {
     public String getPasswordHash() { return passwordHash; }
     public boolean isPhoneVerified() { return phoneVerified; }
     public Instant getCreatedAt() { return createdAt; }
+    public Instant getLastLoginAt() { return lastLoginAt; }
 }

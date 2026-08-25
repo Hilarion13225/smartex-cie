@@ -1,8 +1,5 @@
 package ci.cie.smartprepaid.telemetry.service;
 
-import ci.cie.smartprepaid.recharge.domain.Recharge;
-import ci.cie.smartprepaid.recharge.domain.RechargeStatus;
-import ci.cie.smartprepaid.recharge.repo.RechargeRepository;
 import ci.cie.smartprepaid.telemetry.TelemetryProperties;
 import ci.cie.smartprepaid.telemetry.domain.CreditAutonomyResult;
 import ci.cie.smartprepaid.telemetry.domain.CreditStatus;
@@ -62,13 +59,13 @@ public class CreditAutonomyService {
     private static final BigDecimal CRITICAL_THRESHOLD_DAYS = BigDecimal.valueOf(1);
 
     private final MeterReadingRepository meterReadingRepository;
-    private final RechargeRepository rechargeRepository;
+    private final NetConsumptionCalculator netConsumptionCalculator;
     private final TelemetryProperties properties;
 
-    public CreditAutonomyService(MeterReadingRepository meterReadingRepository, RechargeRepository rechargeRepository,
-                                  TelemetryProperties properties) {
+    public CreditAutonomyService(MeterReadingRepository meterReadingRepository,
+                                  NetConsumptionCalculator netConsumptionCalculator, TelemetryProperties properties) {
         this.meterReadingRepository = meterReadingRepository;
-        this.rechargeRepository = rechargeRepository;
+        this.netConsumptionCalculator = netConsumptionCalculator;
         this.properties = properties;
     }
 
@@ -90,19 +87,7 @@ public class CreditAutonomyService {
                 continue; // relevés au même instant ou hors-ordre -- garde-fou, ne devrait pas arriver
             }
 
-            BigDecimal rechargedInInterval = rechargeRepository
-                    .findByMeterIdAndStatusAndUpdatedAtBetween(meterId, RechargeStatus.CREDIT_APPLIED,
-                            previous.getCapturedAt(), next.getCapturedAt())
-                    .stream()
-                    .map(Recharge::getAmountXof)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            double expectedWithoutConsumption = previous.getCreditBalance().doubleValue()
-                    + rechargedInInterval.doubleValue();
-            double netConsumption = expectedWithoutConsumption - next.getCreditBalance().doubleValue();
-            if (netConsumption < 0) {
-                netConsumption = 0; // voir Javadoc de la classe: jamais compté comme un gain non tracé
-            }
+            double netConsumption = netConsumptionCalculator.between(meterId, previous, next);
 
             totalConsumptionFcfa += netConsumption;
             totalIntervalDays += intervalDays;

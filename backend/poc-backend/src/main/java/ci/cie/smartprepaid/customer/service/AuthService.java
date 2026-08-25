@@ -59,6 +59,7 @@ public class AuthService {
         Customer customer = customerRepository.findByPhoneNumber(phoneNumber)
                 .orElseThrow(() -> new DomainException("NOT_FOUND", "Aucun compte pour ce numéro: " + phoneNumber));
         customer.markPhoneVerified();
+        customer.recordLogin();
         customerRepository.save(customer);
         String token = jwtService.generate(customer.getCustomerId(), customer.getRole());
         return new VerifiedLogin(customer, token);

@@ -15,6 +15,12 @@ import java.util.UUID;
 public interface RechargeRepository extends JpaRepository<Recharge, UUID> {
     Optional<Recharge> findByIdempotencyKey(String idempotencyKey);
 
+    /** GET /api/v1/recharges?customerId= (historique des transactions d'un client). */
+    List<Recharge> findByCustomerIdOrderByCreatedAtDesc(String customerId);
+
+    /** GET /api/v1/recharges sans customerId (fleet complète, rôles support uniquement). */
+    List<Recharge> findAllByOrderByCreatedAtDesc();
+
     /**
      * CreditAutonomyService (ALG-01 simplifié) : recharges effectivement appliquées au compteur
      * (CREDIT_APPLIED, updatedAt = instant de la transition — voir Recharge#transitionTo) dans un

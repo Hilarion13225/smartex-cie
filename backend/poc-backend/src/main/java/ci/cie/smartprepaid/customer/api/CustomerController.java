@@ -9,9 +9,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
-/** GET /api/v1/customers/me — protégé par JWT (voir customer.security.SecurityConfig). */
+/**
+ * GET /api/v1/customers/me — protégé par JWT, self uniquement.
+ * GET /api/v1/customers — liste, réservée CIE_ADMIN/DSI_ADMIN (voir SecurityConfig, plus
+ * sensible qu'audit/support : expose des numéros de téléphone en masse).
+ */
 @RestController
 @RequestMapping("/api/v1/customers")
 public class CustomerController {
@@ -28,5 +33,10 @@ public class CustomerController {
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new DomainException("NOT_FOUND", "Client introuvable: " + customerId));
         return CustomerResponse.from(customer);
+    }
+
+    @GetMapping
+    public List<CustomerResponse> list() {
+        return customerRepository.findAll().stream().map(CustomerResponse::from).toList();
     }
 }

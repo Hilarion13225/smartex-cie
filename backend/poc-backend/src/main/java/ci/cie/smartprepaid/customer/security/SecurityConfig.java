@@ -2,6 +2,7 @@ package ci.cie.smartprepaid.customer.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -22,7 +23,10 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * /api/v1/devices/**                        -              -                   -          oui  (flux device/dongle)
  * /actuator/**                              -              -                   -          oui
  * /api/v1/customers/me                     soi-même        soi-même           soi-même     non
+ * GET /api/v1/customers (liste)             non              non                oui         non
+ * GET /api/v1/devices (liste)               non              oui                oui         non
  * GET /api/v1/recharges/{id}         propriétaire only      toutes             toutes       non
+ * GET /api/v1/recharges?customerId=  propriétaire only      toutes             toutes       non
  * POST /api/v1/recharges                   oui*             oui*               oui*         non
  * POST /api/v1/commands/{id}/retry          non             oui                non**        non
  * GET /api/v1/audit                         non             oui                oui          non
@@ -71,7 +75,16 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/meters/**").permitAll()
                         .requestMatchers("/api/v1/payments/callback").permitAll()
+                        // Chemins exacts AVANT la règle permitAll /api/v1/devices/** ci-dessous
+                        // (Spring Security retient la première règle qui matche) : la liste des
+                        // devices (fleet CIE) est plus sensible que le heartbeat public du dongle.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/devices").hasAnyRole(
+                                "CIE_OPERATOR", "CIE_ADMIN", "DSI_ADMIN")
                         .requestMatchers("/api/v1/devices/**").permitAll()
+                        // Liste des clients : plus sensible qu'audit/support (numéros de
+                        // téléphone en masse) -- réservée aux rôles admin, pas CIE_OPERATOR.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/customers").hasAnyRole(
+                                "CIE_ADMIN", "DSI_ADMIN")
                         .requestMatchers("/actuator/**").permitAll()
                         // Nécessaire : quand un handler ci-dessous (401/403) appelle
                         // response.sendError(...), le conteneur redirige en interne vers
