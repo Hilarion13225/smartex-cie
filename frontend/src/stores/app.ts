@@ -191,7 +191,11 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     transactions: [{
       ...t,
       id: `TXN-${Date.now()}`,
-      date: new Date().toLocaleString("fr-FR"),
+      // ISO, pas un format localise fr-FR : finance.tsx refait `new Date(createdAt)` pour
+      // l'affichage (formatage a la volee, cf mapStoreTransaction) -- un format deja
+      // localise n'est pas re-analysable par le constructeur Date, d'ou un "Invalid Date"
+      // systematique observe en recette sur ces entrees locales.
+      date: new Date().toISOString(),
     }, ...s.transactions],
   })),
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { api, createSimulatedRecharge, DEFAULT_METER_ID } from '../../services/api'
+import { api, createSimulatedRecharge, DEFAULT_METER_ID, useMock } from '../../services/api'
 import type { RechargeDetail } from '../../types'
 import { useAppStore } from '../../stores/app'
 import { useRechargeStore } from '../../stores/recharge'
@@ -191,12 +191,20 @@ export function WavePayment() {
         navigate('/app/recharge/error')
         return
       }
-      addTransaction({
-        amount: recharge.amount,
-        provider: recharge.provider,
-        status: 'success',
-        meterId: recharge.meterId,
-      })
+      // Mode mock uniquement : MockApiAdapter.listTransactions() renvoie un jeu de demo
+      // statique qui ne verra jamais cette recharge, le store local est donc la seule trace
+      // qu'elle affichera. En mode reel, createRecharge() ci-dessous cree la vraie recharge
+      // cote backend, deja recuperee par listTransactions() -- l'ajouter aussi ici faisait
+      // doublon dans l'historique (une entree locale "TXN-..." a la date invalide en plus
+      // de la vraie), pour chaque recharge reussie, sans exception.
+      if (useMock) {
+        addTransaction({
+          amount: recharge.amount,
+          provider: recharge.provider,
+          status: 'success',
+          meterId: recharge.meterId,
+        })
+      }
       try {
         // Paiement (simulé) confirmé -> la recharge n'est créée pour de vrai côté backend
         // qu'à partir de maintenant (voir RechargeMethod.start, qui ne posait qu'un
