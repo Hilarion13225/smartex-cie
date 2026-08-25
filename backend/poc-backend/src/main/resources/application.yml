@@ -34,6 +34,14 @@ mqtt:
 meter-adapter:
   mock-dongle-base-url: ${MOCK_DONGLE_BASE_URL:http://localhost:9001}
 
+# CommandExpiryWatcher (T07/T09 - voir Javadoc de la classe) : le premier passage
+# est retardé pour laisser le temps à la session MQTT persistante (cleanSession=false)
+# de redélivrer les ACK en attente avant que le watcher ne les traite comme TIMEOUT.
+recharge:
+  watcher:
+    initial-delay-ms: ${WATCHER_INITIAL_DELAY_MS:15000}
+    fixed-delay-ms: ${WATCHER_FIXED_DELAY_MS:10000}
+
 # Domaine customer/auth (voir docs/05_reconciliation-api-frontend-backend.md §8).
 # Secret de LABORATOIRE par défaut (même convention que DB_PASSWORD) : à
 # surcharger via JWT_SECRET pour tout environnement au-delà du PoC local.
