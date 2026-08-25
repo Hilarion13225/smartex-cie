@@ -2,6 +2,37 @@ import { create } from 'zustand'
 import type { Customer, NotificationPrefs, AutoRechargeConfig, Alert, PaymentProvider } from '../types'
 import { mockAlerts } from '../mocks/data'
 
+// ─── Stockage du JWT ───
+// Choix : sessionStorage (backing store) + Zustand (cache réactif en mémoire pour l'UI).
+//
+// Pourquoi sessionStorage plutôt que :
+// - mémoire seule (pas de storage) : perdrait la session à chaque rafraîchissement de
+//   page, inacceptable en usage normal (l'utilisateur recharge/navigue dans une PWA).
+// - localStorage : persiste indéfiniment entre redémarrages du navigateur — un token volé
+//   par XSS resterait exploitable bien après la fermeture de l'onglet.
+// - cookie httpOnly : la meilleure option contre le vol par XSS (illisible en JS), mais le
+//   backend renvoie aujourd'hui le JWT dans le corps JSON de /auth/verify-otp, pas via
+//   Set-Cookie — l'activer nécessiterait un changement backend (flags Secure/SameSite,
+//   protection CSRF), explicitement hors périmètre de cette branche (frontend uniquement).
+//
+// Compromis assumé : sessionStorage reste lisible par tout script injecté (même exposition
+// XSS que localStorage), mais scope au seul onglet (fermeture = perte du token, contrairement
+// à localStorage) et le JWT a de toute façon une expiration bornée côté backend (24h par
+// défaut, JwtService). Acceptable pour ce PoC de labo ; à revoir (cookie httpOnly + CSRF)
+// avant tout usage au-delà du poste de développement local.
+const TOKEN_STORAGE_KEY = 'cie_poc_jwt'
+const PENDING_PHONE_STORAGE_KEY = 'cie_poc_pending_phone'
+
+const readStoredToken = (): string | null => {
+  try { return sessionStorage.getItem(TOKEN_STORAGE_KEY) } catch { return null }
+}
+const writeStoredToken = (token: string | null) => {
+  try {
+    if (token) sessionStorage.setItem(TOKEN_STORAGE_KEY, token)
+    else sessionStorage.removeItem(TOKEN_STORAGE_KEY)
+  } catch { /* sessionStorage indisponible (mode privé strict, etc.) — dégrade sans planter */ }
+}
+
 interface Toast {
   id: number
   title: string
@@ -21,6 +52,19 @@ interface TransactionRecord {
 interface AppState {
   customer: Customer | null
   setCustomer: (c: Customer | null) => void
+
+  // JWT courant (voir note de stockage ci-dessus). null = non authentifié.
+  token: string | null
+  setToken: (t: string | null) => void
+
+  // Numéro de téléphone en attente de vérification OTP, entre login/register et
+  // l'écran /verification (le backend exige phoneNumber + code pour verify-otp).
+  pendingPhone: string | null
+  setPendingPhone: (phone: string | null) => void
+
+  // Déconnexion complète : efface customer + token (session/store + sessionStorage).
+  // Appelé par httpClient sur un 401 (token absent/expiré/invalide sur un appel protégé).
+  clearSession: () => void
 
   alerts: Alert[]
   pushAlert: (a: Alert) => void
@@ -48,6 +92,22 @@ let toastId = 0
 export const useAppStore = create<AppState>((set) => ({
   customer: null,
   setCustomer: (customer) => set({ customer }),
+
+  token: readStoredToken(),
+  setToken: (token) => { writeStoredToken(token); set({ token }) },
+
+  pendingPhone: (() => {
+    try { return sessionStorage.getItem(PENDING_PHONE_STORAGE_KEY) } catch { return null }
+  })(),
+  setPendingPhone: (phone) => {
+    try {
+      if (phone) sessionStorage.setItem(PENDING_PHONE_STORAGE_KEY, phone)
+      else sessionStorage.removeItem(PENDING_PHONE_STORAGE_KEY)
+    } catch { /* voir writeStoredToken */ }
+    set({ pendingPhone: phone })
+  },
+
+  clearSession: () => { writeStoredToken(null); set({ customer: null, token: null }) },
 
   alerts: mockAlerts,
   pushAlert: (a) => set((s) => ({ alerts: [a, ...s.alerts] })),
@@ -87,3 +147,12 @@ export const useAppStore = create<AppState>((set) => ({
   lastPaymentAmount: 0,
   setLastPaymentAmount: (amount) => set({ lastPaymentAmount: amount }),
 }))
+
+/** Rôle du customer courant (CLIENT/CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN), si connu.
+ * Attaché uniquement par RealApiAdapter (voir services/realApi.ts, RealCustomer) — le
+ * type partagé `Customer` (mock-first) ne déclare pas ce champ. Renvoie null en mode
+ * mock ou avant toute connexion. Utilisé pour la redirection post-login. */
+export function currentCustomerRole(): string | null {
+  const c = useAppStore.getState().customer as (Customer & { role?: string }) | null
+  return c?.role ?? null
+}

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { api } from '../services/api'
-import type { AuditEvent, Device, DsiUser, ServiceHealth, Token } from '../types'
+import { ApiError } from '../services/httpClient'
+import type { AuditEvent, Device, DsiUser, RechargeDetail, ServiceHealth, Token } from '../types'
 import { fmtFcfa } from '../types'
-import { Badge, Card, KpiCard, MeterStatusBadge, RechargeStatusBadge, Skeleton } from '../components/ui'
+import { Badge, Button, Card, KpiCard, MeterStatusBadge, RechargeStatusBadge, Skeleton } from '../components/ui'
 
 export function AdminUsers() {
   const [users, setUsers] = useState<DsiUser[] | null>(null)
@@ -130,19 +131,66 @@ export function AdminTokens() {
   )
 }
 
+// Le backend n'expose aucune liste d'audit non filtrée (GET /api/v1/audit exige
+// correlationId, voir AuditController) — cette page cherche donc par correlationId au
+// lieu d'afficher une timeline globale (contrairement à l'ancien mock). Réservé
+// CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN côté backend (SecurityConfig) : un CLIENT connecté
+// reçoit un 403, affiché ici proprement plutôt que de laisser la page en squelette
+// infini (voir docs/05_reconciliation-api-frontend-backend.md §4).
 export function AdminAudit() {
+  const [correlationId, setCorrelationId] = useState('')
   const [events, setEvents] = useState<AuditEvent[] | null>(null)
-  useEffect(() => { api.listAuditEvents().then(setEvents) }, [])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const search = async () => {
+    if (!correlationId.trim()) return
+    setLoading(true)
+    setError(null)
+    try {
+      setEvents(await api.listAuditEvents(correlationId.trim()))
+    } catch (err) {
+      setEvents(null)
+      if (err instanceof ApiError && err.status === 403) {
+        setError('Accès refusé — cette vue est réservée aux rôles CIE_OPERATOR / CIE_ADMIN / DSI_ADMIN. Reconnectez-vous avec un compte opérateur.')
+      } else if (err instanceof ApiError && err.status === 401) {
+        setError('Session expirée — reconnectez-vous.')
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Recherche impossible')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const statusColor = (s: string) => (s === 'FAILED' || s === 'REJECTED' ? 'red' : s === 'ACCEPTED' ? 'blue' : 'green')
   return (
     <Card className="p-5">
       <p className="font-semibold text-sm mb-1">Timeline d’audit (append-only)</p>
       <p className="text-xs text-gray-400 mb-4">Chaque événement est corrélé par correlationId : paiement → token → commande → ACK → crédit.</p>
-      {!events ? <Skeleton className="h-64" /> : (
+      <div className="flex gap-2 mb-4">
+        <input
+          value={correlationId}
+          onChange={(e) => setCorrelationId(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && search()}
+          placeholder="correlationId (voir en-tête X-Correlation-Id ou GET /recharges/{id})"
+          className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-cie-500"
+        />
+        <Button onClick={search} disabled={loading || !correlationId.trim()}>Rechercher</Button>
+      </div>
+
+      {error && (
+        <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-3 mb-4">{error}</div>
+      )}
+      {loading && <Skeleton className="h-64" />}
+      {!loading && !error && events && events.length === 0 && (
+        <p className="text-sm text-gray-400">Aucun événement pour ce correlationId.</p>
+      )}
+      {!loading && events && events.length > 0 && (
         <ol className="relative border-l border-gray-200 ml-2 space-y-5">
           {events.map((e) => (
             <li key={e.eventId} className="ml-5">
-              <span className="absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full bg-cie-500" />
+              <span className="absolute -left-1.25 mt-1.5 w-2.5 h-2.5 rounded-full bg-cie-500" />
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold text-sm">{e.action}</span>
                 <Badge color={statusColor(e.status)}>{e.status}</Badge>
@@ -150,10 +198,82 @@ export function AdminAudit() {
               </div>
               <p className="text-xs text-gray-500 mt-0.5">
                 acteur : <b>{e.actor}</b> · ressource : <b>{e.resource}</b> · <span className="font-mono">{e.correlationId}</span>
+                {e.errorCode && <> · erreur : <b className="text-red-600">{e.errorCode}</b></>}
               </p>
             </li>
           ))}
         </ol>
+      )}
+    </Card>
+  )
+}
+
+// Ajouté pour cette branche (pas d'équivalent avant) : recherche d'une recharge par id,
+// via le vrai GET /api/v1/recharges/{id} (ownership : CLIENT limité à ses propres
+// recharges, CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN voient tout — voir RechargeAuthorization).
+export function AdminRechargeLookup() {
+  const [rechargeId, setRechargeId] = useState('')
+  const [recharge, setRecharge] = useState<RechargeDetail | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const search = async () => {
+    if (!rechargeId.trim()) return
+    setLoading(true)
+    setError(null)
+    setRecharge(null)
+    try {
+      setRecharge(await api.getRecharge(rechargeId.trim()))
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        setError('Accès refusé — cette recharge n’appartient pas à votre compte.')
+      } else if (err instanceof ApiError && err.status === 404) {
+        setError('Recharge introuvable.')
+      } else if (err instanceof ApiError && err.status === 401) {
+        setError('Session expirée — reconnectez-vous.')
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Recherche impossible')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Card className="p-5">
+      <p className="font-semibold text-sm mb-1">Recherche recharge</p>
+      <p className="text-xs text-gray-400 mb-4">GET /api/v1/recharges/{'{id}'} — statut réel, paiement, commandes.</p>
+      <div className="flex gap-2 mb-4">
+        <input
+          value={rechargeId}
+          onChange={(e) => setRechargeId(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && search()}
+          placeholder="rechargeId (UUID)"
+          className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-cie-500"
+        />
+        <Button onClick={search} disabled={loading || !rechargeId.trim()}>Rechercher</Button>
+      </div>
+      {error && <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-3">{error}</div>}
+      {loading && <Skeleton className="h-32" />}
+      {!loading && recharge && (
+        <div className="text-sm space-y-2">
+          <div className="flex justify-between"><span className="text-gray-400">Statut final</span><Badge color={recharge.finalStatus === 'CREDIT_APPLIED' ? 'green' : recharge.finalStatus.includes('REJECTED') ? 'red' : 'orange'}>{recharge.finalStatus}</Badge></div>
+          <div className="flex justify-between"><span className="text-gray-400">Statut paiement</span><b>{recharge.paymentStatus ?? '—'}</b></div>
+          <div className="flex justify-between"><span className="text-gray-400">Compteur</span><b>{recharge.meterId}</b></div>
+          <div className="flex justify-between"><span className="text-gray-400">Montant</span><b>{fmtFcfa(recharge.amountXof)}</b></div>
+          <div className="flex justify-between"><span className="text-gray-400">Corrélation</span><span className="font-mono text-xs">{recharge.correlationId}</span></div>
+          {recharge.commands.length > 0 && (
+            <div className="pt-2 border-t border-gray-100">
+              <p className="text-xs text-gray-400 mb-1">Commandes ({recharge.commands.length})</p>
+              {recharge.commands.map((c) => (
+                <div key={c.commandId} className="flex justify-between text-xs py-1">
+                  <span className="font-mono">{c.commandId.slice(0, 8)}…</span>
+                  <Badge color={c.status === 'ACCEPTED' ? 'green' : c.status === 'REJECTED' ? 'red' : 'orange'}>{c.status}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </Card>
   )

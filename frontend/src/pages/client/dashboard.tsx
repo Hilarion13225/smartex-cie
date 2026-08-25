@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api } from '../../services/api'
+import { api, DEFAULT_METER_ID } from '../../services/api'
 import { useAppStore } from '../../stores/app'
 import type { Meter } from '../../types'
 import { fmtFcfa, fmtKwh } from '../../types'
@@ -29,7 +29,10 @@ export function ClientDashboard() {
   const [showNotif, setShowNotif] = useState(true)
 
   useEffect(() => {
-    api.getMeter(customer?.meterId ?? 'MTR-458921').then(setMeter)
+    // `||` et non `??` : un vrai customer backend a meterId = '' (chaîne vide, pas
+    // undefined — aucune association Customer↔Meter n'existe encore, voir docs/05 §8),
+    // que la coalescence nulle ne remplace pas.
+    api.getMeter(customer?.meterId || DEFAULT_METER_ID).then(setMeter)
     const notifTimer = setTimeout(() => setShowNotif(false), 5000)
     return () => clearTimeout(notifTimer)
   }, [customer])
@@ -128,7 +131,10 @@ export function MeterPage() {
   const [meter, setMeter] = useState<Meter | null>(null)
 
   useEffect(() => {
-    api.getMeter(customer?.meterId ?? 'MTR-458921').then(setMeter)
+    {/* `||` et non `??` : un vrai customer backend a meterId = '' (chaîne vide, pas
+        undefined — aucune association Customer↔Meter n'existe encore, voir docs/05 §8),
+        que la coalescence nulle ne remplace pas. */}
+    api.getMeter(customer?.meterId || DEFAULT_METER_ID).then(setMeter)
   }, [customer])
 
   return (

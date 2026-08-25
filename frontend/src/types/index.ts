@@ -115,6 +115,52 @@ export interface AuditEvent {
   timestamp: string
   correlationId: string
   status: string
+  // Absent côté mock ; renseigné par RealApiAdapter quand le backend le fournit
+  // (voir docs/05_reconciliation-api-frontend-backend.md §4).
+  errorCode?: string | null
+}
+
+// ─── Formes réelles du backend (RealApiAdapter uniquement) ───
+// Correspond exactement à RechargeDetailResponse (backend) et CommandSummary —
+// distinct du type `Transaction` (mock) pour ne pas mélanger les deux contrats.
+// Voir docs/05_reconciliation-api-frontend-backend.md §2.
+
+export interface CommandSummary {
+  commandId: string
+  deviceId: string
+  status: string
+  sequence: number
+  retryCount: number
+  sentAt: string | null
+  ackAt: string | null
+}
+
+export interface RechargeDetail {
+  rechargeId: string
+  finalStatus: string
+  // Peut être null : recharge de recette sans Payment réel derrière (voir backend).
+  paymentStatus: string | null
+  correlationId: string
+  meterId: string
+  amountXof: number
+  createdAt: string
+  updatedAt: string
+  commands: CommandSummary[]
+}
+
+// Correspond à DeviceController (backend) — beaucoup plus pauvre que le type `Meter`
+// (mock) : pas de creditPercent/autonomyDays/creditStatus/voltage/current/location/
+// consumptionTodayKwh/alertCount côté backend aujourd'hui (voir docs/05 §3, ALG-01 non
+// implémenté). RealApiAdapter.getMeter() complète ces champs avec des valeurs neutres
+// documentées plutôt que de les inventer.
+export interface MeterStatusResponse {
+  meterId: string
+  deviceId: string
+  deviceStatus: string
+  lastSeen: string | null
+  onlineStatus: boolean
+  creditBalance: number
+  creditUnit: string
 }
 
 export interface DsiUser {

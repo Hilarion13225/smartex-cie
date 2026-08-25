@@ -17,7 +17,7 @@ import {
   CieDashboard, CieFraude, CieIncidents, CieMeterDetail, CieMeters,
   CieParametres, CieQualite, CieRapports, CieRecharges, CieTelecom,
 } from './pages/cie'
-import { AdminAudit, AdminDevices, AdminServices, AdminTokens, AdminUsers } from './pages/admin'
+import { AdminAudit, AdminDevices, AdminRechargeLookup, AdminServices, AdminTokens, AdminUsers } from './pages/admin'
 
 const cieNav: PortalNavItem[] = [
   { to: '/cie', label: 'Tableau de bord', icon: '📊', end: true },
@@ -90,7 +90,7 @@ function AppRoutes() {
           <Route index element={<AdminUsers />} />
           <Route path="devices" element={<AdminDevices />} />
           <Route path="tokens" element={<AdminTokens />} />
-          <Route path="audit" element={<AdminAudit />} />
+          <Route path="audit" element={<div className="space-y-4"><AdminRechargeLookup /><AdminAudit /></div>} />
           <Route path="services" element={<AdminServices />} />
         </Route>
 
