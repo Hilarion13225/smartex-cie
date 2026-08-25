@@ -12,6 +12,7 @@ import logging
 import os
 import ssl
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -46,6 +47,17 @@ INVALID_TOKEN_MARKER = "INVALID"
 # équivalent de la flash/secure element attendue d'un vrai firmware -- mais il
 # se comporte désormais correctement à travers un `docker compose restart`.
 STATE_FILE_PATH = os.getenv("STATE_FILE_PATH", "")
+
+# SIMULATION DE DEMO pour ALG-01 (autonomie de crédit) uniquement -- ceci n'est
+# PAS un comportement de compteur réel : un vrai compteur ne "consomme" pas
+# selon une boucle logicielle à intervalle fixe, mais selon la charge électrique
+# effectivement raccordée, en continu. Sans un mécanisme quelconque de baisse du
+# crédit simulé, celui-ci ne ferait qu'augmenter (recharges) et l'autonomie
+# serait toujours infinie -- ALG-01 ne serait pas validable en PoC faute de
+# baisse observable. Taux et cadence volontairement configurables pour pouvoir
+# accélérer la démo/les tests (voir README, validation ALG-01).
+CONSUMPTION_RATE_FCFA_PER_HOUR = float(os.getenv("CONSUMPTION_RATE_FCFA_PER_HOUR", "150"))
+CONSUMPTION_TICK_SECONDS = float(os.getenv("CONSUMPTION_TICK_SECONDS", "10"))
 
 
 @dataclass
@@ -102,9 +114,19 @@ class MeterState:
                 log.warning("Rejeu détecté pour commandId=%s -> DUPLICATE", command_id)
                 return "DUPLICATE"
             self.processed_command_ids.add(command_id)
-            self.credit_fcfa += amount_xof
+            self.credit_fcfa = round(self.credit_fcfa + amount_xof, 2)
             self._save()
             return "ACCEPTED"
+
+    def consume(self, amount_fcfa: float) -> None:
+        """SIMULATION DE DEMO (voir CONSUMPTION_RATE_FCFA_PER_HOUR) : décrémente le
+        crédit simulé, plancher à 0 (un compteur prépayé ne passe jamais négatif).
+        Arrondi à 2 décimales -- les ticks de décrémentation en FCFA/heure produisent
+        sinon des flottants à précision interminable (ex: 21332.3333333331), qui
+        remontaient tels quels jusqu'à l'affichage frontend."""
+        with self._lock:
+            self.credit_fcfa = round(max(0.0, self.credit_fcfa - amount_fcfa), 2)
+            self._save()
 
 
 meter_state = MeterState(state_file=Path(STATE_FILE_PATH) if STATE_FILE_PATH else None)
@@ -168,3 +190,20 @@ def start_mqtt_loop_in_background() -> mqtt.Client:
     thread = threading.Thread(target=client.loop_forever, daemon=True)
     thread.start()
     return client
+
+
+def start_consumption_loop_in_background() -> None:
+    """SIMULATION DE DEMO uniquement (voir CONSUMPTION_RATE_FCFA_PER_HOUR ci-dessus) --
+    décrémente périodiquement le crédit simulé pour rendre ALG-01 (autonomie de
+    crédit) observable en PoC. Sans effet sur l'anti-rejeu (processed_command_ids),
+    qui ne concerne que les tokens de recharge, pas la consommation."""
+    tick_amount_fcfa = CONSUMPTION_RATE_FCFA_PER_HOUR * (CONSUMPTION_TICK_SECONDS / 3600.0)
+    log.info("Simulation de consommation démarrée: %.2f FCFA/h (%.4f FCFA toutes les %.0fs)",
+              CONSUMPTION_RATE_FCFA_PER_HOUR, tick_amount_fcfa, CONSUMPTION_TICK_SECONDS)
+
+    def _loop():
+        while True:
+            time.sleep(CONSUMPTION_TICK_SECONDS)
+            meter_state.consume(tick_amount_fcfa)
+
+    threading.Thread(target=_loop, daemon=True).start()

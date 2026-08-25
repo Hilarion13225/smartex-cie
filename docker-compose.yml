@@ -47,6 +47,13 @@ services:
       # (fenêtre de validité courte) sans toucher au code, ex:
       # MQTT_COMMAND_TTL_SECONDS=2 docker compose up -d backend
       MQTT_COMMAND_TTL_SECONDS: "${MQTT_COMMAND_TTL_SECONDS:-60}"
+      # ALG-01 simplifié (voir TelemetryCollector/CreditAutonomyService) ; défauts en
+      # application.yml, surchargeables pour accélérer une démo/validation, ex:
+      # TELEMETRY_COLLECTION_INTERVAL_SECONDS=8 docker compose up -d backend
+      TELEMETRY_COLLECTION_INTERVAL_SECONDS: "${TELEMETRY_COLLECTION_INTERVAL_SECONDS:-300}"
+      TELEMETRY_LOOKBACK_DAYS: "${TELEMETRY_LOOKBACK_DAYS:-7}"
+      TELEMETRY_MIN_READINGS_FOR_REAL: "${TELEMETRY_MIN_READINGS_FOR_REAL:-3}"
+      TELEMETRY_FALLBACK_DAILY_CONSUMPTION_FCFA: "${TELEMETRY_FALLBACK_DAILY_CONSUMPTION_FCFA:-500}"
     ports:
       - "8080:8080"
     volumes:
@@ -72,6 +79,11 @@ services:
       # T08: état (crédit, anti-rejeu) persisté sur le volume mock-dongle-data,
       # survit à un `docker compose restart mock-dongle` (voir dongle.py).
       STATE_FILE_PATH: /data/meter_state.json
+      # Simulation de consommation pour ALG-01 (voir dongle.py) ; défauts raisonnables
+      # pour une démo, surchargeables pour accélérer une validation, ex:
+      # CONSUMPTION_RATE_FCFA_PER_HOUR=50000 docker compose up -d mock-dongle
+      CONSUMPTION_RATE_FCFA_PER_HOUR: "${CONSUMPTION_RATE_FCFA_PER_HOUR:-150}"
+      CONSUMPTION_TICK_SECONDS: "${CONSUMPTION_TICK_SECONDS:-10}"
     ports:
       - "9001:9001"
     volumes:

@@ -7,7 +7,13 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 
-from dongle import DEVICE_ID, METER_ID, meter_state, start_mqtt_loop_in_background
+from dongle import (
+    DEVICE_ID,
+    METER_ID,
+    meter_state,
+    start_consumption_loop_in_background,
+    start_mqtt_loop_in_background,
+)
 
 log = logging.getLogger("mock-dongle.api")
 
@@ -32,6 +38,7 @@ def _heartbeat_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_mqtt_loop_in_background()
+    start_consumption_loop_in_background()
     if SEND_HEARTBEAT:
         threading.Thread(target=_heartbeat_loop, daemon=True).start()
     yield
