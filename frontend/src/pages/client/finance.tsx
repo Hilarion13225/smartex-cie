@@ -1,10 +1,33 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../../services/api'
-import { useAppStore } from '../../stores/app'
+import { useAppStore, type TransactionRecord } from '../../stores/app'
 import type { Token, Transaction } from '../../types'
 import { fmtFcfa } from '../../types'
 import { Card, PageHeader, RechargeStatusBadge, Skeleton } from '../../components/ui'
+
+// Les recharges tentées côté client (useAppStore.transactions, voir WavePayment/OMPayment)
+// n'ont pas d'équivalent backend distinct (RG : le paiement EST la transaction, voir
+// mapTransaction dans realApi.ts) -- reconstruit ici le même objet Transaction pour
+// affichage, utilisé à la fois par la liste (combine avec l'API) et le détail (lookup direct,
+// sans quoi getTransaction() -- composé à partir de listTransactions() côté backend -- ne les
+// trouverait jamais et afficherait "introuvable" sur la transaction la plus récente).
+function mapStoreTransaction(st: TransactionRecord): Transaction {
+  return {
+    transactionId: st.id,
+    paymentId: `PAY-${st.id}`,
+    rechargeId: `RCG-${st.id}`,
+    tokenId: `TK-${st.id}`,
+    amount: st.amount,
+    energyValue: (st.amount / 1000) * 1.25,
+    provider: st.provider,
+    status: st.status === 'success' ? 'CREDIT_APPLIED' : 'PAYMENT_FAILED',
+    meterId: st.meterId,
+    customerId: '',
+    correlationId: `CORR-${st.id}`,
+    createdAt: st.date,
+  }
+}
 
 const providerLabel: Record<string, string> = {
   WAVE: 'Wave', ORANGE_MONEY: 'Orange Money', MTN_MONEY: 'MTN Money', MOOV_MONEY: 'Moov Money',
@@ -23,30 +46,22 @@ export function TransactionsPage() {
   const [status, setStatus] = useState('TOUS')
   const [provider, setProvider] = useState('TOUS')
   const storeTransactions = useAppStore((s) => s.transactions)
+  // RealApiAdapter.listTransactions() lit customer.customerId au moment de l'appel et
+  // renvoie [] s'il est encore vide -- sans le redéclencher ici quand `customer` arrive
+  // (ClientLayout le réhydrate de façon asynchrone après un F5, voir sa note), un montage
+  // juste avant la fin de cette réhydratation reste bloqué sur une liste vide pour de bon.
+  const customer = useAppStore((s) => s.customer)
 
   useEffect(() => {
     api.listTransactions().then((apiTxs) => {
       // Combine API transactions with store transactions (store first for recency)
       const combined = [
-        ...storeTransactions.map((st) => ({
-          transactionId: st.id,
-          paymentId: `PAY-${st.id}`,
-          rechargeId: `RCG-${st.id}`,
-          tokenId: `TK-${st.id}`,
-          amount: st.amount,
-          energyValue: (st.amount / 1000) * 1.25,
-          provider: st.provider,
-          status: st.status === 'success' ? 'CREDIT_APPLIED' : 'PAYMENT_FAILED',
-          meterId: st.meterId,
-          customerId: '',
-          correlationId: `CORR-${st.id}`,
-          createdAt: st.date,
-        } as Transaction)),
+        ...storeTransactions.map(mapStoreTransaction),
         ...apiTxs,
       ]
       setTxs(combined)
     })
-  }, [storeTransactions])
+  }, [storeTransactions, customer])
 
   const filtered = useMemo(() => (txs ?? []).filter((t) =>
     (status === 'TOUS' || t.status === status) && (provider === 'TOUS' || t.provider === provider),
@@ -94,13 +109,19 @@ export function TransactionsPage() {
 
 export function TransactionDetail() {
   const navigate = useNavigate()
-  const { txId } = useParams()
+  const { transactionId } = useParams()
+  const storeTransactions = useAppStore((s) => s.transactions)
   const [tx, setTx] = useState<Transaction | undefined>()
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.getTransaction(txId ?? '').then((t) => { setTx(t); setLoading(false) })
-  }, [txId])
+    // D'abord les transactions locales (voir mapStoreTransaction ci-dessus) : l'API ne les
+    // connaît pas, un lookup direct évite un aller-retour réseau inutile et le faux
+    // "introuvable" sur la recharge qu'on vient de faire.
+    const local = storeTransactions.find((st) => st.id === transactionId)
+    if (local) { setTx(mapStoreTransaction(local)); setLoading(false); return }
+    api.getTransaction(transactionId ?? '').then((t) => { setTx(t); setLoading(false) })
+  }, [transactionId, storeTransactions])
 
   const chain = [
     { label: 'Paiement', sub: 'Confirmé', ok: tx && tx.status !== 'PAYMENT_FAILED' && tx.status !== 'PAYMENT_PENDING' },
@@ -112,7 +133,7 @@ export function TransactionDetail() {
 
   return (
     <div className="min-h-screen bg-[#f6f8fa]">
-      <PageHeader title={`Transaction ${txId}`} onBack={() => navigate(-1)} />
+      <PageHeader title={`Transaction ${transactionId}`} onBack={() => navigate(-1)} />
       <div className="px-5 py-5 space-y-4">
         {loading ? (
           <Skeleton className="h-72 rounded-2xl" />

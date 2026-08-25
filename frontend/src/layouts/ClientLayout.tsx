@@ -16,9 +16,21 @@ export default function ClientLayout() {
   const navigate = useNavigate()
   const alerts = useAppStore((s) => s.alerts)
   const setAlerts = useAppStore((s) => s.setAlerts)
+  const token = useAppStore((s) => s.token)
+  const customer = useAppStore((s) => s.customer)
+  const setCustomer = useAppStore((s) => s.setCustomer)
   const unread = alerts.filter((a) => !a.read).length
 
   useEffect(() => { api.listAlerts().then(setAlerts) }, [setAlerts])
+  // Le JWT survit à un F5 (sessionStorage), mais `customer` est un simple état mémoire,
+  // jamais réhydraté jusqu'ici -- tout ce qui dépend de customer.customerId (transactions,
+  // createRecharge...) se comportait donc comme "non connecté" dès le premier rechargement
+  // de page suivant une connexion, silencieusement (pas d'erreur, juste des listes vides).
+  // Erreur ignorée : un 401 déclenche déjà clearSession() dans httpClient, un problème
+  // réseau ne doit pas empêcher le reste de la page de s'afficher.
+  useEffect(() => {
+    if (token && !customer) { api.getMe().then(setCustomer).catch(() => {}) }
+  }, [token, customer, setCustomer])
   return (
     <div className="min-h-full max-w-md mx-auto bg-[#f6f8fa] relative pb-20">
       <Toasts />
