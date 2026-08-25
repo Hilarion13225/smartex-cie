@@ -1,10 +1,16 @@
 import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { Navigate, NavLink, Outlet } from 'react-router-dom'
+import { useAppStore } from '../stores/app'
 
 export interface PortalNavItem { to: string; label: string; icon: string; end?: boolean }
 
 export default function PortalLayout({ title, items, accent = 'CIE' }: { title: string; items: PortalNavItem[]; accent?: string }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const token = useAppStore((s) => s.token)
+
+  // Même garde que ClientLayout (voir sa note) : /cie/** et /admin/** restaient accessibles
+  // en tapant l'URL sans être connecté.
+  if (!token) return <Navigate to="/" replace />
 
   return (
     <div className="min-h-full flex flex-col lg:flex-row">

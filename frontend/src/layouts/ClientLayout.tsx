@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { useAppStore } from '../stores/app'
 
@@ -30,6 +30,13 @@ export default function ClientLayout() {
   useEffect(() => {
     if (token && !customer) { api.getMe().then(setCustomer).catch(() => {}) }
   }, [token, customer, setCustomer])
+
+  // Aucune garde de route jusqu'ici : /app/** restait accessible en tapant l'URL même sans
+  // token (sessionStorage vide ou expiré), affichant un dashboard vide/cassé au lieu de
+  // renvoyer vers la connexion -- l'app supposait "connecté" dès que les appels API
+  // réussissaient, jamais l'inverse.
+  if (!token) return <Navigate to="/" replace />
+
   return (
     <div className="min-h-full max-w-md mx-auto bg-[#f6f8fa] relative pb-20">
       <header className="sticky top-0 z-20 bg-white border-b-2 border-orange-400 px-4 py-3 flex items-center justify-between">
