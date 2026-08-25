@@ -363,24 +363,43 @@ avec la CIE avant un banc réel, voir §6).
   pas** strictement validé : le scénario littéral "commande déjà `SENT`, ACK en approche, coupure
   survient exactement entre les deux" tel que décrit en `§16_FailureInjection`, ni un quelconque
   seuil de temps de reprise formellement convenu avec la CIE.
-- **T08 (redémarrage du dongle) — couvert uniquement au niveau conteneur logiciel** :
-  `docker compose restart mock-dongle` a été testé et validé (résubscription correcte). Mais
-  `MeterState` (`credit_fcfa`, mémoire anti-rejeu `processed_command_ids`) est un simple objet
-  Python en mémoire, sans aucune persistance — un redémarrage l'efface entièrement (vérifié
-  empiriquement : crédit passé de `17500.0` à `0.0` XOF après restart, alors que les recharges
-  correspondantes restent correctement `CREDIT_APPLIED` côté backend, qui reste le système de
-  référence). Un vrai dongle/firmware devra avoir sa propre mémoire persistante (flash/secure
-  element) — un redémarrage matériel ne doit jamais réinitialiser le crédit ni oublier les
-  commandes déjà traitées. **T08 "physique"** (redémarrage réel d'un dongle STM32, comportement
-  watchdog) n'est pas testable sans banc de laboratoire.
-- **Course bénigne watcher / redélivrance MQTT (découverte pendant T09)** : au démarrage du
-  backend, `CommandExpiryWatcher` se déclenche quasi immédiatement et peut traiter une commande
-  comme `TIMEOUT` avant que l'ACK réellement mis en attente côté broker (session persistante
-  QoS1) n'ait été lu par `AckListener` — un retry superflu est alors déclenché. Le système converge
-  quand même (aucune perte, aucune incohérence), mais l'ACK d'origine n'est pas celui qui résout
-  la commande. Aucune garantie d'ordre stricte n'existe entre "traiter les messages MQTT en
-  attente à la reconnexion" et "premier passage du job planifié" au démarrage. Non corrigé — sans
-  conséquence pour le PoC logiciel, mais à surveiller avant un banc réel à plus fort enjeu.
+- **T08 (redémarrage du dongle) — mitigé côté logiciel du mock, toujours pas équivalent au
+  matériel réel** : `docker compose restart mock-dongle` a été testé et validé (résubscription
+  correcte). `MeterState` (`credit_fcfa`, mémoire anti-rejeu `processed_command_ids`) était un
+  simple objet Python en mémoire, sans aucune persistance — un redémarrage l'effaçait entièrement
+  (constaté empiriquement : crédit passé de `17500.0` à `0.0` XOF après restart, alors que les
+  recharges correspondantes restaient correctement `CREDIT_APPLIED` côté backend, qui reste le
+  système de référence). **Corrigé** (`simulators/mock-dongle/dongle.py`, branche
+  `test/t14-performance`) : `MeterState` persiste désormais `credit_fcfa` et
+  `processed_command_ids` dans un fichier JSON (`STATE_FILE_PATH`, écriture atomique
+  write-tmp-then-rename) sur un volume Docker dédié (`mock-dongle-data`, voir
+  `docker-compose.yml`) ; un `docker compose restart mock-dongle` conserve désormais le crédit et
+  l'anti-rejeu (vérifié par test : `test_etat_survit_a_un_redemarrage_T08` dans
+  `simulators/mock-dongle/test_dongle.py`, ainsi que par une simulation manuelle du redémarrage).
+  Le comportement reste opt-in (rétro-compatible : `MeterState()` sans argument reste purement en
+  mémoire, comme avant, tests historiques inchangés) et protégé par un verrou (`threading.Lock`)
+  car l'état est lu par les handlers FastAPI (thread HTTP) et écrit par le callback MQTT (thread
+  dédié). **Ceci reste un mock logiciel** (fichier JSON, pas flash/secure element) : un vrai
+  dongle/firmware devra avoir sa propre mémoire persistante matérielle — un redémarrage matériel
+  ne doit jamais réinitialiser le crédit ni oublier les commandes déjà traitées, et cette
+  persistance logicielle du mock ne se substitue pas à cette exigence firmware. **T08 "physique"**
+  (redémarrage réel d'un dongle STM32, comportement watchdog) reste non testable sans banc de
+  laboratoire.
+- **Course bénigne watcher / redélivrance MQTT (découverte pendant T09) — fenêtre réduite, pas
+  éliminée** : au démarrage du backend, `CommandExpiryWatcher` se déclenche quasi immédiatement
+  (`fixedDelay` sans `initialDelay`) et peut traiter une commande comme `TIMEOUT` avant que l'ACK
+  réellement mis en attente côté broker (session persistante QoS1) n'ait été lu par `AckListener`
+  — un retry superflu est alors déclenché. Le système converge quand même (aucune perte, aucune
+  incohérence), mais l'ACK d'origine n'est pas celui qui résout la commande. **Mitigé**
+  (`CommandExpiryWatcher.java`, `application.yml`, branche `test/t14-performance`) : un délai
+  initial configurable (`recharge.watcher.initial-delay-ms`, défaut 15s) retarde le premier
+  passage du job pour laisser le temps à la redélivrance MQTT de s'effectuer. Ceci **réduit** la
+  fenêtre pratique de la course sans l'**éliminer** dans l'absolu : ni Paho ni le protocole MQTT
+  n'exposent de signal "backlog de session entièrement redélivré", donc aucune garantie d'ordre
+  stricte n'existe formellement. Compilation et l'ensemble des 29 tests JUnit (`mvn test`)
+  vérifiés au vert après ce changement — aucun test dédié au timing du watcher lui-même (nécessite
+  un contexte Spring réel + attente de temps réel, jugé disproportionné pour un PoC). À surveiller
+  avant un banc réel à plus fort enjeu.
 - **Compteur/protocole réel CIE non qualifié (Gate 0 non franchi)** : tout le PoC repose sur
   `MockMeterAdapter`/`mock-dongle`, qui simulent un comportement idéalisé (accepte tout token ne
   contenant pas le marqueur `INVALID`, latence quasi nulle). Le protocole, les timings, les codes
@@ -474,12 +493,17 @@ n'appartiennent pas à ce dépôt de code doivent encore être obtenues de la CI
    des seuils p50/p95 cibles** avant de considérer le critère Performance comme pleinement couvert
    au sens strict de `§20_Acceptance` (mesurer ne suffit pas, l'exigence porte aussi sur
    l'approbation du seuil).
-6. **Ajouter une mémoire persistante réelle côté firmware/dongle** avant le banc réel — le mock en
-   mémoire pure (§4) ne représente pas le comportement attendu du matériel réel et ne doit pas
-   être considéré comme une preuve de résilience matérielle.
-7. Comprendre/lever la course bénigne watcher/redélivrance MQTT décrite en §4 avant de s'appuyer
-   sur ce mécanisme en conditions réelles à plus fort enjeu (même si elle est sans conséquence
-   observée sur le PoC logiciel).
+6. ~~Ajouter une mémoire persistante réelle côté firmware/dongle~~ — **mitigé côté mock logiciel**
+   (§4) : `MeterState` persiste désormais sur disque (volume Docker), le mock survit à
+   `docker compose restart`. **Reste à faire côté matériel réel avant le banc réel** : cette
+   persistance JSON du mock ne représente toujours pas la mémoire flash/secure element attendue du
+   firmware réel — seule une vraie mémoire persistante matérielle satisfera l'exigence pour le
+   Gate 2.
+7. **Mitigé** — un délai initial configurable (`recharge.watcher.initial-delay-ms`, défaut 15s,
+   §4) réduit la fenêtre pratique de la course bénigne watcher/redélivrance MQTT décrite en §4.
+   Non éliminée dans l'absolu (aucun signal protocolaire "backlog redélivré" n'existe côté MQTT) —
+   à garder sous surveillance avant de s'appuyer sur ce mécanisme en conditions réelles à plus fort
+   enjeu, même si elle reste sans conséquence observée sur le PoC logiciel.
 8. **Exécuter T10** (mauvaise association device/meter) dès qu'un second device de labo sera
    provisionné — seul test du `§14_TestMatrix` qui n'a pas pu être exécuté dans ce dossier, pour
    une raison purement matérielle (§4).

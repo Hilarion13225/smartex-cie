@@ -323,17 +323,19 @@ retrouvée et résolue automatiquement par ce même mécanisme dès le démarrag
   (re)connexion, y compris après redémarrage : confirmé via les logs
   (`Connecté au broker MQTT` immédiatement suivi de `Abonné à cie/lab/DONGLE-LAB-0001/command/token`).
 
-**Limite connue à documenter avant le banc réel** : `MeterState` (crédit accumulé,
-mémoire anti-rejeu `processed_command_ids`) est un simple objet Python en mémoire, sans
-aucune persistance. Un `docker compose restart mock-dongle` l'efface entièrement —
-vérifié : le crédit affiché par `GET /meters/CIE-LAB-0001/credit` est passé de `17500.0`
-à `0.0` après redémarrage, alors que les recharges correspondantes restent correctement
-`CREDIT_APPLIED` côté backend (le système de référence, PostgreSQL, reste intact et fait
-autorité ; seul l'état simulé du compteur mock est volatile). Acceptable pour un PoC
-logiciel dont l'objet est de valider l'orchestration/idempotence côté backend, mais **à
-proscrire sur un vrai dongle/compteur** : un redémarrage matériel ne doit jamais
-réinitialiser le crédit ni oublier les commandes déjà traitées (mémoire flash/secure
-element requise, hors scope logiciel du PoC).
+**Persistance ajoutée** : `MeterState` (crédit accumulé, mémoire anti-rejeu
+`processed_command_ids`) était un simple objet Python en mémoire, sans aucune
+persistance — un `docker compose restart mock-dongle` l'effaçait entièrement (constaté :
+le crédit affiché par `GET /meters/CIE-LAB-0001/credit` passait de `17500.0` à `0.0`
+après redémarrage, alors que les recharges correspondantes restaient correctement
+`CREDIT_APPLIED` côté backend). Désormais, `MeterState` persiste `credit_fcfa` et
+`processed_command_ids` dans un fichier JSON (`STATE_FILE_PATH`, écriture atomique) sur
+le volume Docker `mock-dongle-data` : un `docker compose restart mock-dongle` conserve
+le crédit et l'anti-rejeu (voir `test_etat_survit_a_un_redemarrage_T08` dans
+`simulators/mock-dongle/test_dongle.py`). **Reste un mock logiciel** (fichier JSON, pas
+flash/secure element) — **à proscrire comme preuve de résilience matérielle** : un vrai
+dongle/compteur devra avoir sa propre mémoire persistante embarquée, hors scope logiciel
+du PoC.
 
 ### T09 — Coupure/redémarrage du backend
 
@@ -363,6 +365,13 @@ commande. Sans conséquence sur la correction du PoC (aucune perte, juste un ret
 surnuméraire), mais à garder à l'œil avant un vrai banc : il n'y a pas de garantie
 stricte d'ordre entre "traiter les messages MQTT en attente à la reconnexion" et "le
 premier passage du job planifié" au démarrage.
+
+**Mitigé** : `CommandExpiryWatcher` prend désormais un délai initial configurable
+(`recharge.watcher.initial-delay-ms`, défaut 15s, voir `application.yml` et le Javadoc de
+la classe) avant son premier passage, pour laisser le temps à la redélivrance MQTT de
+s'effectuer. Ceci réduit la fenêtre pratique de la course sans l'éliminer dans l'absolu —
+ni Paho ni le protocole MQTT n'exposent de signal "backlog de session entièrement
+redélivré".
 
 ## Lancer les tests
 
