@@ -25,6 +25,18 @@ import java.util.List;
  * la republication après une coupure réseau, observé en test T07) ; sans
  * cela, la commande resterait bloquée en TIMEOUT après une seule tentative
  * au lieu d'épuiser ses MAX_RETRIES avant fallback.
+ *
+ * `recharge.watcher.initial-delay-ms` (course bénigne observée en test T09) :
+ * au redémarrage du backend, la session MQTT persistante (cleanSession=false)
+ * redélivre les ACK reçus pendant la coupure de façon asynchrone, sans signal
+ * "backlog vidé" côté client Paho/protocole MQTT — rien ne garantit qu'elle a
+ * fini avant le premier passage de ce job. Sans délai initial, ce job peut
+ * traiter une commande comme TIMEOUT juste avant que son ACK réel (déjà en
+ * attente côté broker) ne soit lu par AckListener, déclenchant un retry
+ * superflu (l'ACK d'origine devient alors sans effet plutôt que résolutif :
+ * aucune perte, mais un aller-retour évitable). Le délai initial ci-dessous
+ * n'élimine pas la course dans l'absolu (aucune garantie d'ordre stricte
+ * n'existe côté MQTT), il réduit la fenêtre pratique où elle peut se produire.
  */
 @Component
 public class CommandExpiryWatcher {
@@ -41,7 +53,8 @@ public class CommandExpiryWatcher {
         this.orchestrator = orchestrator;
     }
 
-    @Scheduled(fixedDelay = 10_000)
+    @Scheduled(initialDelayString = "${recharge.watcher.initial-delay-ms:15000}",
+            fixedDelayString = "${recharge.watcher.fixed-delay-ms:10000}")
     public void expireOverdueCommands() {
         List<MeterCommand> overdue = commandRepository.findByStatusInAndExpiresAtBefore(NON_TERMINAL, Instant.now());
         for (MeterCommand command : overdue) {

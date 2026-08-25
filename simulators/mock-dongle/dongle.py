@@ -13,6 +13,8 @@ import os
 import ssl
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
 
 import paho.mqtt.client as mqtt
 
@@ -37,24 +39,75 @@ ACK_TOPIC = f"cie/lab/{DEVICE_ID}/ack"
 # Marqueur volontaire pour forcer un rejet en test (T05: token invalide).
 INVALID_TOKEN_MARKER = "INVALID"
 
+# T08 (redémarrage du dongle) : sans persistance, un redémarrage effaçait tout
+# le crédit accumulé et la mémoire anti-rejeu (constaté en test : credit_fcfa
+# retombait à 0 alors que les recharges restaient CREDIT_APPLIED côté backend,
+# seul système de référence). Ce fichier reste un mock logiciel, pas un
+# équivalent de la flash/secure element attendue d'un vrai firmware -- mais il
+# se comporte désormais correctement à travers un `docker compose restart`.
+STATE_FILE_PATH = os.getenv("STATE_FILE_PATH", "")
+
 
 @dataclass
 class MeterState:
     credit_fcfa: float = 0.0
     online: bool = True
     processed_command_ids: set = field(default_factory=set)
+    state_file: Optional[Path] = field(default=None, repr=False, compare=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+
+    def __post_init__(self):
+        if self.state_file is not None:
+            self._load()
+
+    def _load(self) -> None:
+        try:
+            raw = self.state_file.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return
+        except OSError as e:
+            log.error("Lecture de l'état persistant impossible (%s), démarrage à vide: %s", self.state_file, e)
+            return
+        try:
+            data = json.loads(raw)
+            self.credit_fcfa = float(data.get("credit_fcfa", 0.0))
+            self.processed_command_ids = set(data.get("processed_command_ids", []))
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            log.error("État persistant illisible (%s), démarrage à vide: %s", self.state_file, e)
+            return
+        log.info("État restauré depuis %s: credit_fcfa=%s, %d commande(s) déjà traitée(s)",
+                  self.state_file, self.credit_fcfa, len(self.processed_command_ids))
+
+    def _save(self) -> None:
+        if self.state_file is None:
+            return
+        try:
+            self.state_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = self.state_file.with_suffix(".tmp")
+            tmp_path.write_text(
+                json.dumps({
+                    "credit_fcfa": self.credit_fcfa,
+                    "processed_command_ids": sorted(self.processed_command_ids),
+                }),
+                encoding="utf-8",
+            )
+            tmp_path.replace(self.state_file)  # écriture atomique (même volume)
+        except OSError as e:
+            log.error("Écriture de l'état persistant impossible (%s): %s", self.state_file, e)
 
     def apply_token(self, command_id: str, amount_xof: float) -> str:
         """Retourne ACCEPTED, REJECTED ou DUPLICATE (T04/T05/T06/T12)."""
-        if command_id in self.processed_command_ids:
-            log.warning("Rejeu détecté pour commandId=%s -> DUPLICATE", command_id)
-            return "DUPLICATE"
-        self.processed_command_ids.add(command_id)
-        self.credit_fcfa += amount_xof
-        return "ACCEPTED"
+        with self._lock:
+            if command_id in self.processed_command_ids:
+                log.warning("Rejeu détecté pour commandId=%s -> DUPLICATE", command_id)
+                return "DUPLICATE"
+            self.processed_command_ids.add(command_id)
+            self.credit_fcfa += amount_xof
+            self._save()
+            return "ACCEPTED"
 
 
-meter_state = MeterState()
+meter_state = MeterState(state_file=Path(STATE_FILE_PATH) if STATE_FILE_PATH else None)
 
 
 def on_connect(client, userdata, flags, reason_code, properties=None):

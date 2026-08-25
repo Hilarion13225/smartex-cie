@@ -166,6 +166,21 @@ public class RechargeOrchestrator {
                 auditService.record(correlationId, "recharge-orchestrator", "COMMAND_REJECTED", "RECHARGE",
                         recharge.getRechargeId().toString(), "FAILED", "TOKEN_REJECTED", null);
             }
+            case DUPLICATE -> {
+                // Le dongle a détecté un rejeu de ce commandId (son propre mécanisme anti-rejeu,
+                // voir mock-dongle) : le token a NÉCESSAIREMENT déjà été appliqué avec succès lors
+                // d'une tentative antérieure (le dongle n'accepte/n'applique un token qu'une seule
+                // fois par commandId) -- ce backend ne l'avait simplement pas su à temps (ACK
+                // initial gagné par une course puis écrasé par CommandSendFinalizer, cf. sa
+                // Javadoc). Sans ce cas, la recharge restait bloquée indéfiniment en
+                // COMMAND_TIMEOUT malgré un crédit réellement appliqué côté compteur -- bug réel
+                // découvert sous charge légère (T14), pas seulement théorique.
+                recharge.transitionTo(RechargeStatus.CREDIT_APPLIED);
+                auditService.record(correlationId, "recharge-orchestrator", "CREDIT_APPLIED_VIA_DUPLICATE_ACK",
+                        "RECHARGE", recharge.getRechargeId().toString(), "SUCCESS", null,
+                        "ACK DUPLICATE reçu du dongle : le token avait déjà été appliqué avec succès "
+                                + "lors d'une tentative antérieure");
+            }
             case TIMEOUT -> handleTimeout(command, recharge, correlationId);
             default -> log.warn("ACK non géré: {} pour commande {}", ackResult, commandId);
         }

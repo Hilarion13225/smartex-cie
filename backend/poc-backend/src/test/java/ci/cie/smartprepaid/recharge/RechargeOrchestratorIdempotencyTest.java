@@ -155,6 +155,32 @@ class RechargeOrchestratorIdempotencyTest {
     }
 
     @Test
+    void ackDuplicate_transitionneLaRechargeVersCreditApplied() {
+        // Bug réel découvert sous charge légère (T14) : un ACK DUPLICATE (le dongle a détecté un
+        // rejeu de ce commandId, via son propre mécanisme anti-rejeu) signifie que le token a
+        // nécessairement déjà été appliqué avec succès lors d'une tentative antérieure -- avant
+        // ce correctif, ce cas tombait dans le "default" du switch (simple log.warn) et laissait
+        // la recharge bloquée indéfiniment malgré un crédit réellement appliqué côté compteur.
+        UUID rechargeId = UUID.randomUUID();
+        UUID commandId = UUID.randomUUID();
+
+        Recharge recharge = new Recharge(UUID.randomUUID(), "CIE-LAB-0001", "CUST-1",
+                new BigDecimal("1000"), "KEY-T14-DUP", "corr-t14-dup");
+        MeterCommand command = new MeterCommand(rechargeId, "DONGLE-LAB-0001", "corr-t14-dup", "hash",
+                1L, Instant.now().plusSeconds(60));
+
+        when(commandRepository.findById(commandId)).thenReturn(Optional.of(command));
+        when(rechargeRepository.findById(any())).thenReturn(Optional.of(recharge));
+
+        orchestrator.handleAck(commandId, CommandStatus.DUPLICATE, "corr-t14-dup-retry");
+
+        assertThat(command.getStatus()).isEqualTo(CommandStatus.DUPLICATE);
+        assertThat(recharge.getStatus()).isEqualTo(RechargeStatus.CREDIT_APPLIED);
+        verify(auditService).record(eq("corr-t14-dup-retry"), anyString(), eq("CREDIT_APPLIED_VIA_DUPLICATE_ACK"),
+                anyString(), anyString(), eq("SUCCESS"), any(), anyString());
+    }
+
+    @Test
     void ackTimeout_republieAvecUneFenetreRenouveleeEtPasseRechargeEnCommandTimeout() {
         // T07: un ACK TIMEOUT (déclenché soit par un ACK tardif, soit par
         // CommandExpiryWatcher) doit relancer la commande avec un expiresAt frais

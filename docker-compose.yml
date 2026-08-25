@@ -69,10 +69,14 @@ services:
       MQTT_CLIENT_CERT_PATH: /certs/DONGLE-LAB-0001.crt
       MQTT_CLIENT_KEY_PATH: /certs/DONGLE-LAB-0001.key
       BACKEND_HEARTBEAT_URL: http://backend:8080/api/v1/devices/DONGLE-LAB-0001/heartbeat
+      # T08: état (crédit, anti-rejeu) persisté sur le volume mock-dongle-data,
+      # survit à un `docker compose restart mock-dongle` (voir dongle.py).
+      STATE_FILE_PATH: /data/meter_state.json
     ports:
       - "9001:9001"
     volumes:
       - ./infra/mosquitto/certs:/certs:ro
+      - mock-dongle-data:/data
     depends_on:
       - mosquitto
 
@@ -90,3 +94,4 @@ services:
 volumes:
   pg-data:
   mosquitto-data:
+  mock-dongle-data:

@@ -6,17 +6,17 @@ Conforme à `docs/02_developer-pack-poc.md` §19_LabProcedure et §20_Acceptance
 
 | Champ | Valeur |
 |---|---|
-| Date du dossier | 2026-08-25 (mis à jour le même jour avec les résultats T11/T13/C01/C03/C05-C07, §3bis) |
+| Date du dossier | 2026-08-25 (mis à jour le même jour : T11/T13/C01/C03/C05-C07 §3bis, puis T14 §3ter — **dernier test logiciel du §14_TestMatrix, dossier considéré complet côté logiciel après cette mise à jour**) |
 | Périmètre testé | PoC Laboratoire — backend Spring Boot (`backend/poc-backend`) + simulateurs Python (`payment-simulator`, `mock-dongle`), orchestrés via `docker compose`. **Hors matériel réel** : aucun compteur ni dongle physique CIE, uniquement `MockMeterAdapter` / `mock-dongle`. |
-| Version du repo | Base : branche `main`, commit `28d9b91` ("docs: dossier de recette Gate 1..."), taguée `LAB-POC-v0.1.0`. Complément §3bis (T11/T13/C01/C03/C05-C07) réalisé sur la branche **`test/cyber-tests-t11-t13-c01-c07`**, commit **`2a9ed27`** — **pas encore mergée sur `main`**, en attente de validation explicite (voir §6 pour la recommandation). |
-| Tag Git | **`LAB-POC-v0.1.0`** (tag annoté, pointe sur `28d9b91`), conformément à `§06_Repo`. Le complément §3bis n'est pas encore inclus dans un tag — à re-taguer après merge si souhaité. |
-| État de commit | ✅ Tout le travail décrit dans ce dossier est commité (voir tableaux §2 pour les hash exacts par sujet). Chaque commit de la partie taguée a été vérifié individuellement buildable (`mvn compile test-compile` / `mvn test` réussis sur chacun via des worktrees temporaires), garantissant un historique bisectable. Le commit `2a9ed27` (§3bis) a été vérifié par `mvn test` (27/27) après coup, pas via worktree dédié. |
+| Version du repo | Base : branche `main`, commit `28d9b91` ("docs: dossier de recette Gate 1..."), taguée `LAB-POC-v0.1.0`. Compléments réalisés sur deux branches non fusionnées : `test/cyber-tests-t11-t13-c01-c07` (commits `2a9ed27`, `5e71bc5` — §3bis) puis `test/t14-performance` (commits `8ade229`, `ea934f0` — §3ter, T14 et son correctif), cette dernière créée depuis la première pour ne pas perdre ses résultats. **Aucune des deux n'est mergée sur `main`**, en attente de validation explicite (voir §6). |
+| Tag Git | **`LAB-POC-v0.1.0`** (tag annoté, pointe sur `28d9b91`), conformément à `§06_Repo`. Les compléments §3bis/§3ter ne sont pas encore inclus dans un tag — à re-taguer après merge (`LAB-POC-v0.2.0` suggéré, la couverture logicielle complète du Gate 1 le justifie). |
+| État de commit | ✅ Tout le travail décrit dans ce dossier est commité (voir tableaux §2 pour les hash exacts par sujet). Chaque commit de la partie taguée a été vérifié individuellement buildable (`mvn compile test-compile` / `mvn test` réussis sur chacun via des worktrees temporaires), garantissant un historique bisectable. Les commits `2a9ed27`/`5e71bc5`/`8ade229`/`ea934f0` ont été vérifiés par `mvn test` (27/27 puis 29/29) après coup, pas via worktree dédié. |
 
 ## 2. Tableau récapitulatif des tests
 
-Tests explicitement couverts par ce dossier : T01–T06, T09, T11, T13, T15, C01–C07 (voir §4 pour
-T07/T08, partiellement couverts et traités séparément, et pour la liste des tests non exécutés —
-T10, T14 notamment).
+Tests explicitement couverts par ce dossier : T01–T06, T09, T11, T13, T14, T15, C01–C07 (voir §4
+pour T07/T08, partiellement couverts et traités séparément, et pour T10, seul test du
+`§14_TestMatrix` non exécuté — bloqué par une limite matérielle, pas logicielle).
 
 | ID | Description | Résultat | Commit | Anomalie corrigée |
 |---|---|---|---|---|
@@ -37,13 +37,16 @@ T10, T14 notamment).
 | C05 | Token en clair dans les logs → absent (masquage vérifié par grep exhaustif) | PASS | `2a9ed27` | — |
 | C06 | Broker ACL — identité mTLS valide mais non enregistrée → aucun accès aux topics d'un autre device | PASS | `2a9ed27` | — |
 | C07 | Scan de secrets sur tout l'historique Git → aucun secret trouvé | PASS | `2a9ed27` | — |
+| T14 | Latence end-to-end (paiement → `CREDIT_APPLIED`), volume + parallélisme léger | PASS avec correction | `8ade229` | Lost update concurrent SENT/ACK + ACK `DUPLICATE` non géré (§3ter) |
 
 *Colonne "Commit" : `9bb175e` = validation initiale T01→T06/T15 ; `b7145f1` = endpoint T05 ;
 `3f4ee21` = mTLS/ACL (dont C02) ; `0ca7f7d` = correctifs de résilience T07-T09 ; `2a9ed27` =
 scripts T11/C01/C06 + TTL paramétrable pour T13/C04 (voir §3bis pour le détail méthodologique de
 chacun, C03/C05/C07 n'ayant pas nécessité de nouveau code, seulement une procédure de test
-documentée). Tous atteignables depuis le tag `LAB-POC-v0.1.0` ou la branche
-`test/cyber-tests-t11-t13-c01-c07`.*
+documentée) ; `8ade229` = correctif de concurrence trouvé par T14 (§3ter) ; `ea934f0` = outil de
+mesure T14 (`infra/perf/t14_latency.py`). Tous atteignables depuis le tag `LAB-POC-v0.1.0` (base)
+et les branches `test/cyber-tests-t11-t13-c01-c07` (§3bis) / `test/t14-performance` (§3ter,
+créée depuis la précédente).*
 
 ## 3. Anomalies et corrections
 
@@ -271,6 +274,82 @@ git log --all --oneline -- '*.env' ':!*.env.example'                    # .env j
 **C07 : PASS — aucun secret trouvé dans l'historique Git, par deux méthodes indépendantes.**
 Rien à purger, rien à signaler à l'utilisateur sur ce point.
 
+## 3ter. T14 — Latence end-to-end (dernier test logiciel du §14_TestMatrix)
+
+**Méthode** (`infra/perf/t14_latency.py`, voir son README) : mesure le temps entre l'envoi d'un
+paiement simulé (`POST /simulate-payment`) et le moment où la recharge correspondante atteint
+`finalStatus=CREDIT_APPLIED` en base, sur 60 recharges avec 8 à 10 en parallèle. **Limite assumée
+et documentée explicitement dans le script** : ce n'est **pas** un test de charge représentatif
+d'une charge de production réelle — poste de labo unique (un seul `mock-dongle`, un seul broker,
+tout sur la même machine que le backend), aucune conclusion de dimensionnement ne doit en être
+tirée sans un vrai test de charge sur une infrastructure représentative.
+
+### Anomalie trouvée et corrigée : lost update concurrent + ACK `DUPLICATE` non géré
+
+Le tout premier run (60 recharges, concurrence 8) a révélé un taux d'échec de 10% (6/60 bloquées
+en `COMMAND_SENT`/`COMMAND_TIMEOUT` au-delà du timeout de test). Investigation par lecture directe
+des logs et de la base (pas de correction à l'aveugle) :
+
+1. **Race condition "lost update"** entre `CommandSendFinalizer.publishAndMarkSent` (qui marque la
+   commande `SENT` après publication MQTT) et `RechargeOrchestrator.handleAck` (qui marque
+   `ACCEPTED` sur réception de l'ACK). Preuve directe dans l'audit trail d'une recharge touchée :
+   ```
+   RECHARGE_CREATED  11:57:12.989
+   CREDIT_APPLIED    11:57:13.260   <- l'ACK a bien été traité comme un succès...
+   COMMAND_SENT      11:57:13.287   <- ...puis ce log arrive après, et écrase le statut
+   ```
+   `mock-dongle` répond en général en quelques millisecondes ; sous charge concurrente, la fenêtre
+   entre "publier la commande" et "committer son propre `markSent()`" s'élargit suffisamment pour
+   que l'ACK committe *avant* — puis `CommandSendFinalizer`, qui avait chargé sa propre copie de la
+   commande *avant* ce commit concurrent, écrase silencieusement `ACCEPTED` par `SENT` en
+   sauvegardant sa vue périmée. Le garde-fou `if (status == PENDING)` déjà présent (§3, Bug #1)
+   était bien réel mais évalué sur une lecture en mémoire non fraîche — un TOCTOU classique entre
+   deux transactions indépendantes sur la même ligne.
+2. **Conséquence en cascade, ACK `DUPLICATE` non géré** : la commande ainsi repassée à `SENT` était
+   retentée 60s plus tard par `CommandExpiryWatcher` ; `mock-dongle`, qui avait déjà traité ce
+   `commandId` (son propre anti-rejeu), répondait `DUPLICATE` — un cas que
+   `RechargeOrchestrator.handleAck` ne traitait pas (`default` du switch, simple `log.warn`),
+   laissant la recharge bloquée en `COMMAND_TIMEOUT` **indéfiniment**, malgré un crédit réellement
+   appliqué côté compteur dès la première tentative.
+
+**Correction** (commit `8ade229`) :
+- `CommandSendFinalizer` remplace son pattern `find()` + vérification en mémoire + `save()` par un
+  `UPDATE` conditionnel **atomique** au niveau SQL (`CommandRepository#markSentIfStatus`,
+  `RechargeRepository#markStatusIfStatus` — `UPDATE ... WHERE status = :expected`) : plus aucune
+  fenêtre de lecture-modification-écriture, la transaction la plus rapide gagne proprement au lieu
+  de pouvoir être écrasée par la plus lente.
+- Un ACK `DUPLICATE` est désormais traité comme un succès implicite (le mécanisme anti-rejeu du
+  dongle ne répond `DUPLICATE` que s'il a déjà appliqué ce token avec succès) — transitionne la
+  recharge vers `CREDIT_APPLIED`, audité distinctement (`CREDIT_APPLIED_VIA_DUPLICATE_ACK`).
+- 2 nouveaux tests unitaires (`CommandSendFinalizerTest`, `RechargeOrchestratorIdempotencyTest
+  #ackDuplicate_...`). `mvn test` = 29/29 verts.
+
+### Résultats après correction
+
+4 runs consécutifs, 60 recharges chacun (le premier juste après reconstruction du backend — JIT/
+pool de connexions à froid — puis 3 runs "chauds") :
+
+| Run | Concurrence | Succès | min | p50 | p95 | p99 | max |
+|---|---|---|---|---|---|---|---|
+| 1 (à froid, juste après rebuild) | 8 | 60/60 (100%) | 293 ms | 601 ms | 1770 ms | 1793 ms | 1808 ms |
+| 2 | 8 | 60/60 (100%) | 93 ms | 323 ms | 924 ms | 957 ms | 957 ms |
+| 3 | 10 | 60/60 (100%) | 62 ms | 277 ms | 411 ms | 465 ms | 488 ms |
+| 4 (retenu comme référence, "chaud") | 8 | 60/60 (100%) | 74 ms | **256 ms** | **341 ms** | 357 ms | 375 ms |
+
+**Avant correctif** (run initial, mêmes paramètres) : 54/60 (90%) puis 59/60 (98,3%) sur deux
+essais — variable, cohérent avec une race condition (pas un défaut déterministe).
+
+**Après correctif : 100% de succès sur les 4 runs (240 recharges), aucune anomalie résiduelle
+observée.** Chiffres de référence retenus (run 4, "chaud") : **p50 = 256 ms, p95 = 341 ms,
+p99 = 357 ms**. La variance notable entre runs (p95 de 341 ms à 1770 ms) reflète surtout l'état de
+la JVM/du pool de connexions au moment du run (premier run après un rebuild vs runs suivants) et
+la nature partagée du poste de développement (Docker Desktop, autres processus) — pas un signe
+d'instabilité du système lui-même, qui converge de façon fiable dans tous les cas.
+
+**Aucun seuil p50/p95 n'a été proposé ni approuvé par la CIE** — ces chiffres sont une première
+mesure de référence, pas une validation contre un objectif métier convenu (qui reste à définir
+avec la CIE avant un banc réel, voir §6).
+
 ## 4. Limites connues et non couvertes
 
 - **T07 (perte réseau MQTT) — partiellement couvert, à préciser** : le round-trip MQTT local
@@ -284,35 +363,55 @@ Rien à purger, rien à signaler à l'utilisateur sur ce point.
   pas** strictement validé : le scénario littéral "commande déjà `SENT`, ACK en approche, coupure
   survient exactement entre les deux" tel que décrit en `§16_FailureInjection`, ni un quelconque
   seuil de temps de reprise formellement convenu avec la CIE.
-- **T08 (redémarrage du dongle) — couvert uniquement au niveau conteneur logiciel** :
-  `docker compose restart mock-dongle` a été testé et validé (résubscription correcte). Mais
-  `MeterState` (`credit_fcfa`, mémoire anti-rejeu `processed_command_ids`) est un simple objet
-  Python en mémoire, sans aucune persistance — un redémarrage l'efface entièrement (vérifié
-  empiriquement : crédit passé de `17500.0` à `0.0` XOF après restart, alors que les recharges
-  correspondantes restent correctement `CREDIT_APPLIED` côté backend, qui reste le système de
-  référence). Un vrai dongle/firmware devra avoir sa propre mémoire persistante (flash/secure
-  element) — un redémarrage matériel ne doit jamais réinitialiser le crédit ni oublier les
-  commandes déjà traitées. **T08 "physique"** (redémarrage réel d'un dongle STM32, comportement
-  watchdog) n'est pas testable sans banc de laboratoire.
-- **Course bénigne watcher / redélivrance MQTT (découverte pendant T09)** : au démarrage du
-  backend, `CommandExpiryWatcher` se déclenche quasi immédiatement et peut traiter une commande
-  comme `TIMEOUT` avant que l'ACK réellement mis en attente côté broker (session persistante
-  QoS1) n'ait été lu par `AckListener` — un retry superflu est alors déclenché. Le système converge
-  quand même (aucune perte, aucune incohérence), mais l'ACK d'origine n'est pas celui qui résout
-  la commande. Aucune garantie d'ordre stricte n'existe entre "traiter les messages MQTT en
-  attente à la reconnexion" et "premier passage du job planifié" au démarrage. Non corrigé — sans
-  conséquence pour le PoC logiciel, mais à surveiller avant un banc réel à plus fort enjeu.
+- **T08 (redémarrage du dongle) — mitigé côté logiciel du mock, toujours pas équivalent au
+  matériel réel** : `docker compose restart mock-dongle` a été testé et validé (résubscription
+  correcte). `MeterState` (`credit_fcfa`, mémoire anti-rejeu `processed_command_ids`) était un
+  simple objet Python en mémoire, sans aucune persistance — un redémarrage l'effaçait entièrement
+  (constaté empiriquement : crédit passé de `17500.0` à `0.0` XOF après restart, alors que les
+  recharges correspondantes restaient correctement `CREDIT_APPLIED` côté backend, qui reste le
+  système de référence). **Corrigé** (`simulators/mock-dongle/dongle.py`, branche
+  `test/t14-performance`) : `MeterState` persiste désormais `credit_fcfa` et
+  `processed_command_ids` dans un fichier JSON (`STATE_FILE_PATH`, écriture atomique
+  write-tmp-then-rename) sur un volume Docker dédié (`mock-dongle-data`, voir
+  `docker-compose.yml`) ; un `docker compose restart mock-dongle` conserve désormais le crédit et
+  l'anti-rejeu (vérifié par test : `test_etat_survit_a_un_redemarrage_T08` dans
+  `simulators/mock-dongle/test_dongle.py`, ainsi que par une simulation manuelle du redémarrage).
+  Le comportement reste opt-in (rétro-compatible : `MeterState()` sans argument reste purement en
+  mémoire, comme avant, tests historiques inchangés) et protégé par un verrou (`threading.Lock`)
+  car l'état est lu par les handlers FastAPI (thread HTTP) et écrit par le callback MQTT (thread
+  dédié). **Ceci reste un mock logiciel** (fichier JSON, pas flash/secure element) : un vrai
+  dongle/firmware devra avoir sa propre mémoire persistante matérielle — un redémarrage matériel
+  ne doit jamais réinitialiser le crédit ni oublier les commandes déjà traitées, et cette
+  persistance logicielle du mock ne se substitue pas à cette exigence firmware. **T08 "physique"**
+  (redémarrage réel d'un dongle STM32, comportement watchdog) reste non testable sans banc de
+  laboratoire.
+- **Course bénigne watcher / redélivrance MQTT (découverte pendant T09) — fenêtre réduite, pas
+  éliminée** : au démarrage du backend, `CommandExpiryWatcher` se déclenche quasi immédiatement
+  (`fixedDelay` sans `initialDelay`) et peut traiter une commande comme `TIMEOUT` avant que l'ACK
+  réellement mis en attente côté broker (session persistante QoS1) n'ait été lu par `AckListener`
+  — un retry superflu est alors déclenché. Le système converge quand même (aucune perte, aucune
+  incohérence), mais l'ACK d'origine n'est pas celui qui résout la commande. **Mitigé**
+  (`CommandExpiryWatcher.java`, `application.yml`, branche `test/t14-performance`) : un délai
+  initial configurable (`recharge.watcher.initial-delay-ms`, défaut 15s) retarde le premier
+  passage du job pour laisser le temps à la redélivrance MQTT de s'effectuer. Ceci **réduit** la
+  fenêtre pratique de la course sans l'**éliminer** dans l'absolu : ni Paho ni le protocole MQTT
+  n'exposent de signal "backlog de session entièrement redélivré", donc aucune garantie d'ordre
+  stricte n'existe formellement. Compilation et l'ensemble des 29 tests JUnit (`mvn test`)
+  vérifiés au vert après ce changement — aucun test dédié au timing du watcher lui-même (nécessite
+  un contexte Spring réel + attente de temps réel, jugé disproportionné pour un PoC). À surveiller
+  avant un banc réel à plus fort enjeu.
 - **Compteur/protocole réel CIE non qualifié (Gate 0 non franchi)** : tout le PoC repose sur
   `MockMeterAdapter`/`mock-dongle`, qui simulent un comportement idéalisé (accepte tout token ne
   contenant pas le marqueur `INVALID`, latence quasi nulle). Le protocole, les timings, les codes
   d'erreur et les contraintes électriques du compteur réel CIE restent entièrement à qualifier
   avec la CIE avant tout raccordement (`docs/02_developer-pack-poc.md` §01_Objectifs, Gate 0).
-- **Autres tests du matrix non exécutés dans ce dossier** : T10 (mauvaise association
-  device/meter — aucun deuxième device de labo n'est provisionné pour le tester réellement) et
-  T14 (latence e2e p50/p95 — **jamais mesurée**, aucune instrumentation de métriques de type
-  `activation_latency_ms` n'est en place). T11, T13, C01, C03, C05, C06, C07 sont désormais
-  couverts par des tests dédiés réels — voir §3bis pour le détail méthodologique et les résultats
-  (tous PASS, aucune anomalie trouvée sur ces sept tests).
+- **Seul test du matrix non exécuté dans ce dossier : T10** (mauvaise association device/meter) —
+  bloqué par une limite **matérielle**, pas logicielle : aucun deuxième device de labo n'est
+  provisionné (un seul `mock-dongle`, `DONGLE-LAB-0001`, existe dans cet environnement) pour
+  constituer un vrai cas "Dongle A / compteur B" à ce niveau. Tous les autres tests du
+  `§14_TestMatrix` et `§18_CyberTests` sont désormais couverts par des tests dédiés réels : T11,
+  T13, C01, C03, C05, C06, C07 (§3bis, tous PASS, aucune anomalie trouvée) et T14 (§3ter, PASS
+  après correction de deux anomalies réelles trouvées en l'exécutant).
 - **Coupure d'alimentation réelle (T09 matériel)** : ce dossier ne couvre que
   `docker compose stop/start/restart` (arrêt propre de process). Une coupure secteur/batterie
   réelle sur du matériel physique comporte des risques propres (corruption de flash, état
@@ -330,7 +429,7 @@ Rien à purger, rien à signaler à l'utilisateur sur ce point.
 | **Idempotence** | 100% T06 sans double exécution | ✅ **Atteint** | T06 vérifié à plusieurs reprises : même `idempotencyKey` rejouée → même `rechargeId`, une seule commande publiée sur MQTT. |
 | **Résilience** | T07–T09 passés selon critères convenus | 🟡 **Partiellement atteint** | T09 PASS. T08 PASS au niveau conteneur logiciel uniquement (limite mémoire documentée §4). T07 partiellement couvert (adaptation du scénario, §4) — et aucun "critère convenu" formel (seuil de temps de reprise, etc.) n'a été défini avec la CIE, donc la formulation exacte de l'exigence ne peut pas être cochée intégralement. |
 | **Sécurité** | T11–T13 passés sans contournement | ✅ **Atteint** | T11 et T13 désormais exécutés en tests dédiés réels, sans contournement observé (§3bis) — T12 déjà couvert par test unitaire. L'ensemble des sept scénarios `§18_CyberTests` (C01–C07) est également couvert et PASS, aucune anomalie trouvée. Limite résiduelle documentée (§3bis, T13) : le cas fin d'un ACK tardif correspondant à une tentative *antérieure* à un retry déjà en cours n'a pas été spécifiquement exercé (risque théorique, pas observé). |
-| **Performance** | p50/p95 mesurés et seuils approuvés | ❌ **Non atteint** | T14 jamais exécuté. Aucune mesure de latence n'a été faite, aucune métrique `activation_latency_ms` n'est instrumentée. Aucun seuil n'a été proposé ni approuvé par la CIE. |
+| **Performance** | p50/p95 mesurés et seuils approuvés | 🟡 **Partiellement atteint** | T14 désormais exécuté et PASS (§3ter) : p50 = 256 ms, p95 = 341 ms, 100% de succès sur 240 recharges (4 runs de 60), après correction d'une race condition réelle trouvée par ce test. **Mesurés : oui.** **Seuils approuvés par la CIE : non** — ces chiffres sont une première référence sur un poste de labo (pas un test de charge représentatif), aucun objectif métier n'a été proposé ni validé avec la CIE. |
 | **Audit** | T15 traçable de bout en bout | ✅ **Atteint** | T15 validé à plusieurs reprises : `PAYMENT_CONFIRMED → RECHARGE_CREATED → COMMAND_SENT → CREDIT_APPLIED` (ou `COMMAND_REJECTED`), enchaînement correct et interrogeable par `correlationId`. |
 
 **Lecture à deux niveaux** : au sens **étroit** de son propre nom ("Mock end-to-end fonctionnel",
@@ -339,23 +438,36 @@ compteur → audit fonctionne de bout en bout, de façon idempotente et traçabl
 de sécurité minimale (mTLS + ACL) en place et testée sur un cas. Au sens **large** de la grille
 `§20_Acceptance` complète (qui couvre aussi la résilience T07-T09 et un jeu de tests cyber/perf
 plus large), la couverture Sécurité est désormais **complète** (les sept scénarios `§18_CyberTests`
-et T11/T12/T13 sont tous PASS, §3bis) ; seule la **Performance** (T14, jamais mesurée) reste
-incomplète, comme détaillé ci-dessus.
+et T11/T12/T13 sont tous PASS, §3bis), et la Performance est **mesurée** (§3ter) même si ses
+seuils restent à approuver avec la CIE. **À ce stade, tous les tests logiciels du `§14_TestMatrix`
+et du `§18_CyberTests` sont couverts, à l'exception de T10** — bloqué par une limite matérielle
+(absence d'un second device de labo), pas par le logiciel. Les points encore incomplets de
+`§20_Acceptance` (Résilience partielle, seuils de Performance non approuvés) relèvent désormais
+de décisions/prérequis à obtenir de la CIE, pas de travail logiciel restant.
 
 ## 6. Recommandation GO/NO-GO pour le Gate 2 (banc réel CIE)
 
-### 🟡 GO CONDITIONNEL
+### 🟡 GO CONDITIONNEL — couverture logicielle désormais complète
 
-Aucune anomalie critique de sécurité ou d'intégrité n'est connue et non résolue : les quatre
-anomalies réelles découvertes en testant (§3) ont toutes été corrigées et re-vérifiées, et les
-sept tests cyber `§18_CyberTests` + T11/T13 (§3bis) sont tous PASS sans qu'aucune correction n'ait
-été nécessaire — notamment **C07 (scan de secrets Git, historique complet) : aucun secret trouvé**,
-par deux méthodes indépendantes (gitleaks + grep manuel), rien à purger. Le cœur métier (paiement
-→ token → commande → activation, idempotence, audit) fonctionne de façon fiable et reproductible
-sur le PoC logiciel. Ceci justifie de ne **pas** bloquer sur un NO-GO. Mais la couverture
-Performance de `§20_Acceptance` reste incomplète (§5, T14 jamais mesurée), et plusieurs prérequis
-externes au code (qualification matérielle, PKI de production) ne peuvent être résolus que par la
-CIE — ce qui exclut un GO inconditionnel.
+**Tous les tests logiciels exécutables sans matériel physique sont maintenant couverts et PASS**
+(T01–T09, T11–T15, C01–C07 — voir §2), à l'exception unique de **T10**, bloqué par une limite
+**matérielle** (aucun second device de labo provisionné), pas par une limite de temps ou de
+couverture logicielle. Six anomalies réelles ont été découvertes en testant (les quatre de §3, plus
+les deux de §3ter trouvées par T14) — **toutes corrigées et re-vérifiées, aucune connue et non
+résolue à ce jour.** Notamment **C07 (scan de secrets Git, historique complet) : aucun secret
+trouvé**, par deux méthodes indépendantes (gitleaks + grep manuel), rien à purger. Le cœur métier
+(paiement → token → commande → activation, idempotence, audit, sécurité mTLS/ACL) fonctionne de
+façon fiable et reproductible sur le PoC logiciel, y compris sous une charge concurrente légère
+(T14 : 100% de succès sur 240 recharges après correctif).
+
+Ceci justifie de ne **pas** bloquer sur un NO-GO — il n'y a, à ce stade, **aucune raison
+logicielle** de retenir le Gate 2. Mais un GO inconditionnel reste exclu, car **tout ce qui reste
+en suspens est désormais externe au code, pas du travail logiciel restant** : qualification
+matérielle du compteur (Gate 0), remplacement de la PKI de laboratoire par la PKI de production
+CIE, définition avec la CIE de critères de résilience (T07) et de seuils de performance (T14)
+formellement approuvés, et T10 lui-même (nécessite un second device physique). Le distinguo est
+important : ce n'est plus "le logiciel n'est pas prêt", c'est "des décisions et ressources qui
+n'appartiennent pas à ce dépôt de code doivent encore être obtenues de la CIE".
 
 **Conditions préalables explicites avant tout raccordement à un banc réel CIE (Gate 2) :**
 
@@ -375,16 +487,29 @@ CIE — ce qui exclut un GO inconditionnel.
    définir avec la CIE des critères de résilience convenus (durée max de reprise acceptable,
    etc.) — actuellement non définis.
 5. ~~Exécuter T11 (certificat invalide → rejet) et T13 (expiration, en test dédié)~~ — **fait** :
-   voir §3bis, PASS sans anomalie, ainsi que l'ensemble C01–C07. Reste à faire : **T14** (latence,
-   après instrumentation de métriques `activation_latency_ms`) avant de considérer le critère
-   Performance comme couvert.
-6. **Ajouter une mémoire persistante réelle côté firmware/dongle** avant le banc réel — le mock en
-   mémoire pure (§4) ne représente pas le comportement attendu du matériel réel et ne doit pas
-   être considéré comme une preuve de résilience matérielle.
-7. Comprendre/lever la course bénigne watcher/redélivrance MQTT décrite en §4 avant de s'appuyer
-   sur ce mécanisme en conditions réelles à plus fort enjeu (même si elle est sans conséquence
-   observée sur le PoC logiciel).
+   voir §3bis, PASS sans anomalie, ainsi que l'ensemble C01–C07. ~~Exécuter T14 (latence)~~ —
+   **fait** : voir §3ter, PASS après correction d'une race condition réelle (p50 = 256 ms,
+   p95 = 341 ms sur le run de référence). Reste à faire côté CIE, pas côté code : **faire approuver
+   des seuils p50/p95 cibles** avant de considérer le critère Performance comme pleinement couvert
+   au sens strict de `§20_Acceptance` (mesurer ne suffit pas, l'exigence porte aussi sur
+   l'approbation du seuil).
+6. ~~Ajouter une mémoire persistante réelle côté firmware/dongle~~ — **mitigé côté mock logiciel**
+   (§4) : `MeterState` persiste désormais sur disque (volume Docker), le mock survit à
+   `docker compose restart`. **Reste à faire côté matériel réel avant le banc réel** : cette
+   persistance JSON du mock ne représente toujours pas la mémoire flash/secure element attendue du
+   firmware réel — seule une vraie mémoire persistante matérielle satisfera l'exigence pour le
+   Gate 2.
+7. **Mitigé** — un délai initial configurable (`recharge.watcher.initial-delay-ms`, défaut 15s,
+   §4) réduit la fenêtre pratique de la course bénigne watcher/redélivrance MQTT décrite en §4.
+   Non éliminée dans l'absolu (aucun signal protocolaire "backlog redélivré" n'existe côté MQTT) —
+   à garder sous surveillance avant de s'appuyer sur ce mécanisme en conditions réelles à plus fort
+   enjeu, même si elle reste sans conséquence observée sur le PoC logiciel.
+8. **Exécuter T10** (mauvaise association device/meter) dès qu'un second device de labo sera
+   provisionné — seul test du `§14_TestMatrix` qui n'a pas pu être exécuté dans ce dossier, pour
+   une raison purement matérielle (§4).
 
 Aucune de ces conditions ne remet en cause la solidité du cœur applicatif démontrée par ce
 dossier ; elles relèvent soit de prérequis externes (CIE), soit de travaux de durcissement
-supplémentaires clairement identifiés et non ambigus.
+supplémentaires clairement identifiés et non ambigus. **Le logiciel du PoC, lui, a désormais fait
+l'objet de toute la validation qu'il est possible de mener sans matériel CIE réel ni décision de
+la CIE elle-même.**
