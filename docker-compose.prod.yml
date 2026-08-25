@@ -40,9 +40,18 @@ services:
       args:
         # Same-origin via le reverse-proxy nginx (voir nginx.conf) : pas de port ni de CORS
         # a gerer, le navigateur voit un seul domaine/port pour le site et l'API.
-        VITE_API_BASE_URL: "http://${DEPLOY_PUBLIC_IP:-87.106.7.58}"
+        # Etape intermediaire (avant obtention du certificat) : reste en http+IP pour ne pas
+        # casser la demo en cours -- bascule vers https://poc.smartexdigit.com une fois le
+        # certificat Let's Encrypt obtenu (voir infra/certbot-renew.sh et le nginx.conf final).
+        VITE_API_BASE_URL: "http://87.106.7.58"
         VITE_USE_MOCK_API: "false"
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      # Defi ACME (certbot webroot) + certificats Let's Encrypt obtenus sur l'hote (pas dans
+      # le conteneur : doivent survivre a un rebuild d'image) -- voir infra/certbot-renew.sh.
+      - ./certbot/www:/var/www/certbot
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - backend
