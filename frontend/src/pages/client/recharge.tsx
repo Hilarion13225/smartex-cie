@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { createSimulatedRecharge } from '../../services/api'
-import { mqttMock } from '../../services/mqttMock'
+import { api, createSimulatedRecharge, DEFAULT_METER_ID } from '../../services/api'
+import type { RechargeDetail } from '../../types'
 import { useAppStore } from '../../stores/app'
 import { useRechargeStore } from '../../stores/recharge'
 import type { PaymentProvider } from '../../types'
@@ -104,7 +104,11 @@ export function RechargeMethod() {
     if (!provider) return
     setLoading(true)
     setTimeout(() => {
-      const r = createSimulatedRecharge(amount, provider, customer?.meterId ?? 'MTR-458921')
+      // Placeholder local uniquement (référence/QR affichés pendant la simulation de
+      // paiement ci-après) -- la vraie recharge n'est créée côté backend qu'une fois le
+      // paiement confirmé (voir WavePayment.pay), pas ici : "Tester l'échec" ne doit
+      // jamais laisser une recharge orpheline côté serveur.
+      const r = createSimulatedRecharge(amount, provider, customer?.meterId || DEFAULT_METER_ID)
       setRecharge(r)
       setOutcome('success')
       navigate('/app/recharge/paiement')
@@ -159,7 +163,7 @@ export function RechargeMethod() {
 
 export function WavePayment() {
   const navigate = useNavigate()
-  const { recharge, setOutcome, amount } = useRechargeStore()
+  const { recharge, setRecharge, setOutcome, amount } = useRechargeStore()
   const customer = useAppStore((s) => s.customer)
   const addTransaction = useAppStore((s) => s.addTransaction)
   const notify = useAppStore((s) => s.notify)
@@ -175,7 +179,7 @@ export function WavePayment() {
 
   const pay = (ok: boolean) => {
     setPhase('confirming')
-    setTimeout(() => {
+    setTimeout(async () => {
       if (!ok) {
         addTransaction({
           amount: recharge.amount,
@@ -185,15 +189,30 @@ export function WavePayment() {
         })
         notify('Paiement échoué', 'Veuillez réessayer', 'WARNING')
         navigate('/app/recharge/error')
-      } else {
-        addTransaction({
-          amount: recharge.amount,
-          provider: recharge.provider,
-          status: 'success',
-          meterId: recharge.meterId,
-        })
-        setLastPaymentAmount(recharge.amount)
-        navigate(`/app/recharge/progress?operator=${recharge.provider}&amount=${recharge.amount}`)
+        return
+      }
+      addTransaction({
+        amount: recharge.amount,
+        provider: recharge.provider,
+        status: 'success',
+        meterId: recharge.meterId,
+      })
+      try {
+        // Paiement (simulé) confirmé -> la recharge n'est créée pour de vrai côté backend
+        // qu'à partir de maintenant (voir RechargeMethod.start, qui ne posait qu'un
+        // placeholder local pour l'affichage pendant cette étape) : "Tester l'échec"
+        // ci-dessus ne doit jamais laisser une recharge orpheline côté serveur.
+        const real = await api.createRecharge(recharge.amount, recharge.provider, recharge.meterId)
+        setRecharge(real)
+        setLastPaymentAmount(real.amount)
+        navigate(`/app/recharge/progress?operator=${real.provider}&amount=${real.amount}`)
+      } catch {
+        notify(
+          'Recharge impossible',
+          'Le paiement a été confirmé mais la recharge n’a pas pu être envoyée au serveur — contactez le support.',
+          'CRITICAL',
+        )
+        navigate('/app')
       }
     }, 2200)
   }
@@ -287,23 +306,57 @@ const STEPS = [
   { key: 'credit', label: 'Crédit appliqué', sub: 'Succès', loader: 'Application du crédit...' },
 ]
 
+// backend RechargeStatus (ci.cie.smartprepaid.recharge.domain.RechargeStatus) -> index dans
+// STEPS ci-dessus. COMMAND_TIMEOUT reste affiché comme "commande envoyée" (un retry est en
+// cours côté CommandExpiryWatcher, voir README §Résilience) plutôt que régresser l'affichage.
+const STATUS_TO_STEP: Record<string, number> = {
+  CREATED: 1, TOKEN_GENERATED: 2, COMMAND_SENT: 3, COMMAND_TIMEOUT: 3,
+  COMMAND_REJECTED: 4, FALLBACK_TOKEN_SENT: 4, CREDIT_APPLIED: 5,
+}
+const POLL_INTERVAL_MS = 1500
+const MAX_POLL_ATTEMPTS = 20 // ~30s avant d'afficher "toujours en cours"
+
 export function RechargeStatus() {
   const navigate = useNavigate()
   const { recharge, outcome } = useRechargeStore()
   const notify = useAppStore((s) => s.notify)
   const pushAlert = useAppStore((s) => s.pushAlert)
-  const [step, setStep] = useState(outcome === 'payment_failed' ? -1 : 0)
+  const [detail, setDetail] = useState<RechargeDetail | null>(null)
+  const [stillWaiting, setStillWaiting] = useState(false)
 
-  const failAt = outcome === 'injection_failed' ? 4 : 99
-  const done = step >= STEPS.length
-  const failed = outcome === 'injection_failed' && step >= failAt
-
+  // Interroge le vrai statut backend (voir api.getRecharge) au lieu d'une animation locale
+  // programmée à l'avance : avant feature/telemetry-alg01, cet écran ne faisait qu'avancer
+  // une barre de progression sur un minuteur, sans jamais vérifier ce qui s'était réellement
+  // passé côté serveur.
   useEffect(() => {
-    if (!recharge || outcome === 'payment_failed' || done || failed) return
-    if (step === 3) mqttMock.simulateCommandFlow(recharge.meterId, recharge.commandId, outcome === 'success')
-    const t = setTimeout(() => setStep((s) => s + 1), 1500)
-    return () => clearTimeout(t)
-  }, [step, done, failed, recharge, outcome])
+    if (!recharge || outcome === 'payment_failed') return
+    let cancelled = false
+    let attempts = 0
+
+    const poll = async () => {
+      try {
+        const d = await api.getRecharge(recharge.rechargeId)
+        if (cancelled) return
+        setDetail(d)
+        const terminal = d.finalStatus === 'CREDIT_APPLIED' || d.finalStatus === 'COMMAND_REJECTED'
+          || d.finalStatus === 'FALLBACK_TOKEN_SENT'
+        attempts += 1
+        if (terminal) return
+        if (attempts >= MAX_POLL_ATTEMPTS) { setStillWaiting(true); return }
+        setTimeout(poll, POLL_INTERVAL_MS)
+      } catch {
+        if (!cancelled) setStillWaiting(true)
+      }
+    }
+    poll()
+    return () => { cancelled = true }
+  }, [recharge, outcome])
+
+  const status = detail?.finalStatus
+  const done = status === 'CREDIT_APPLIED'
+  const failed = status === 'COMMAND_REJECTED' || status === 'FALLBACK_TOKEN_SENT'
+  const step = done ? STEPS.length : status ? (STATUS_TO_STEP[status] ?? 1) : 0
+  const failAt = 4
 
   useEffect(() => {
     if (done && recharge) {
@@ -314,7 +367,12 @@ export function RechargeStatus() {
       })
     }
     if (failed && recharge) {
-      notify('Injection échouée', 'Le token est disponible pour saisie manuelle.', 'WARNING')
+      notify(
+        status === 'FALLBACK_TOKEN_SENT' ? 'Injection échouée' : 'Recharge refusée',
+        status === 'FALLBACK_TOKEN_SENT'
+          ? 'Le compteur n’a pas confirmé automatiquement.' : 'Le compteur a rejeté la commande.',
+        'WARNING',
+      )
     }
   }, [done, failed]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -375,7 +433,9 @@ export function RechargeStatus() {
                 <p className="text-xs text-cie-100">Votre crédit a été mis à jour.</p>
               </div>
             </div>
-            <Button variant="secondary" className="w-full" onClick={() => navigate(`/app/tokens/${recharge.tokenId}`)}>Voir le détail du token</Button>
+            {recharge.tokenValue && (
+              <Button variant="secondary" className="w-full" onClick={() => navigate(`/app/tokens/${recharge.tokenId}`)}>Voir le détail du token</Button>
+            )}
             <Button className="w-full" onClick={() => navigate('/app')}>Terminer</Button>
           </div>
         )}
@@ -384,6 +444,13 @@ export function RechargeStatus() {
           <div className="animate-slide-up mt-2 space-y-3">
             <Button className="w-full" onClick={() => navigate('/app/recharge/fallback')}>Saisir le token manuellement</Button>
             <Button variant="secondary" className="w-full" onClick={() => navigate('/app')}>Plus tard</Button>
+          </div>
+        )}
+
+        {stillWaiting && !done && !failed && (
+          <div className="animate-slide-up mt-2 rounded-xl bg-orange-50 border border-orange-200 p-4 text-sm text-orange-800">
+            Toujours en cours de traitement côté serveur — revenez sur cet écran dans
+            quelques instants (référence : <span className="font-mono">{recharge.rechargeId}</span>).
           </div>
         )}
       </div>
@@ -422,9 +489,15 @@ export function TokenDetailPage() {
             <div className="flex justify-between"><span className="text-gray-400">Date</span><b>{new Date(data?.createdAt ?? Date.now()).toLocaleString('fr-FR')}</b></div>
             <div className="flex justify-between"><span className="text-gray-400">Transaction</span><b>{data?.transactionId ?? '—'}</b></div>
           </div>
-          <div className="flex gap-3 mt-6">
-            <Button variant="secondary" className="flex-1" onClick={() => { navigator.clipboard?.writeText(data?.tokenValue ?? ''); notify('Copié', 'Token copié dans le presse-papiers', 'INFO') }}>📋 Copier le token</Button>
-          </div>
+          {data?.tokenValue ? (
+            <div className="flex gap-3 mt-6">
+              <Button variant="secondary" className="flex-1" onClick={() => { navigator.clipboard?.writeText(data.tokenValue); notify('Copié', 'Token copié dans le presse-papiers', 'INFO') }}>📋 Copier le token</Button>
+            </div>
+          ) : (
+            <p className="mt-6 text-xs text-gray-400 text-center">
+              Le token a été transmis automatiquement à votre compteur — il n'est jamais affiché en clair, pour votre sécurité.
+            </p>
+          )}
         </Card>
         <button onClick={() => navigate('/app/tokens')} className="w-full text-center text-sm text-cie-600 font-semibold mt-5">Voir tous mes tokens</button>
       </div>
@@ -435,7 +508,6 @@ export function TokenDetailPage() {
 export function TokenFallback() {
   const navigate = useNavigate()
   const { recharge } = useRechargeStore()
-  const token = recharge?.tokenValue ?? '1326 9458 7764 2217'
   return (
     <div className="min-h-screen bg-[#f6f8fa]">
       <PageHeader title="Fallback – Token manuel" onBack={() => navigate('/app')} />
@@ -443,8 +515,18 @@ export function TokenFallback() {
         <Card className="p-5 bg-orange-50 border-orange-200 text-center">
           <span className="text-3xl">⚠️</span>
           <p className="font-bold text-gray-900 mt-2">Injection automatique échouée</p>
-          <p className="text-xs text-gray-500 mt-1">Veuillez entrer le token ci-dessous sur votre compteur</p>
-          <p className="text-2xl font-extrabold text-red-600 tracking-wider mt-4">{token}</p>
+          {recharge?.tokenValue ? (
+            <>
+              <p className="text-xs text-gray-500 mt-1">Veuillez entrer le token ci-dessous sur votre compteur</p>
+              <p className="text-2xl font-extrabold text-red-600 tracking-wider mt-4">{recharge.tokenValue}</p>
+            </>
+          ) : (
+            <p className="text-xs text-gray-500 mt-2">
+              Pour votre sécurité, le token n'est pas affiché dans l'application. Contactez le
+              support avec la référence <span className="font-mono">{recharge?.rechargeId ?? '—'}</span> pour
+              l'obtenir.
+            </p>
+          )}
         </Card>
         <Card className="p-4 text-sm">
           <div className="flex justify-between"><span className="text-gray-400">Compteur</span><b>{recharge?.meterId ?? 'MTR-458921'}</b></div>

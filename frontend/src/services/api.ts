@@ -49,6 +49,12 @@ export interface ApiAdapter {
   // GET /api/v1/recharges/{id} — endpoint réel, protégé (ownership : le CLIENT ne voit que
   // ses propres recharges, CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN voient tout — voir SecurityConfig)
   getRecharge(id: string): Promise<RechargeDetail>
+  // POST /api/v1/recharges — MockApiAdapter garde l'ancien comportement 100% simulé
+  // (createSimulatedRecharge), RealApiAdapter appelle le vrai backend. Avant
+  // feature/telemetry-alg01, l'écran de recharge n'appelait jamais cette méthode : la
+  // "recharge" ne mettait à jour que le store local (lastPaymentAmount), jamais le
+  // backend, d'où un crédit qui revenait à son état d'origine au rechargement de page.
+  createRecharge(amount: number, provider: PaymentProvider, meterId: string): Promise<SimulatedRecharge>
   // GET /api/v1/tokens — pas d'équivalent backend (le token n'est de toute façon jamais
   // exposé en clair, voir CLAUDE.md règle #3), reste mock
   listTokens(): Promise<Token[]>
@@ -101,12 +107,27 @@ class MockApiAdapter implements ApiAdapter {
   async getRecharge(id: string): Promise<RechargeDetail> {
     await delay(400)
     const t = mockTransactions.find((x) => x.rechargeId === id)
-    if (!t) throw new Error('Recharge introuvable')
-    return {
-      rechargeId: t.rechargeId, finalStatus: t.status, paymentStatus: 'CONFIRMED',
-      correlationId: t.correlationId, meterId: t.meterId, amountXof: t.amount,
-      createdAt: t.createdAt, updatedAt: t.createdAt, commands: [],
+    if (t) {
+      return {
+        rechargeId: t.rechargeId, finalStatus: t.status, paymentStatus: 'CONFIRMED',
+        correlationId: t.correlationId, meterId: t.meterId, amountXof: t.amount,
+        createdAt: t.createdAt, updatedAt: t.createdAt, commands: [],
+      }
     }
+    // Recharge fraîchement créée via createRecharge() ci-dessous (pas dans les 64
+    // transactions de démo pré-générées) : simule un succès immédiat, cohérent avec le
+    // comportement historique de cet adaptateur (démo toujours accélérée/réussie),
+    // pour que RechargeStatus (polling universel, voir recharge.tsx) fonctionne pareil
+    // en mock qu'en réel plutôt que de lever une erreur sur un id qu'il vient de créer.
+    return {
+      rechargeId: id, finalStatus: 'CREDIT_APPLIED', paymentStatus: 'CONFIRMED',
+      correlationId: `CORR-${id}`, meterId: DEFAULT_METER_ID, amountXof: 0,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), commands: [],
+    }
+  }
+  async createRecharge(amount: number, provider: PaymentProvider, meterId: string) {
+    await delay(400)
+    return createSimulatedRecharge(amount, provider, meterId)
   }
   async listTokens() { await delay(550); return mockTokens }
   async getToken(id: string) { await delay(400); return mockTokens.find((t) => t.tokenId === id) }
@@ -120,8 +141,11 @@ class MockApiAdapter implements ApiAdapter {
 
 // VITE_USE_MOCK_API : "false" bascule sur RealApiAdapter (vrais appels backend).
 // Tout autre valeur (y compris absente) garde le mock — défaut sûr si la variable
-// n'est pas définie (ex: preview/build oublié sans .env).
-const useMock = import.meta.env.VITE_USE_MOCK_API !== 'false'
+// n'est pas définie (ex: preview/build oublié sans .env). Exporté : voir dashboard.tsx,
+// qui n'ajoute le "boost" optimiste lastPaymentAmount qu'en mode mock (les mocks ne
+// changent jamais réellement, contrairement au meter réellement refetché en mode réel,
+// où l'ajouter en plus du crédit déjà à jour causerait un double comptage).
+export const useMock = import.meta.env.VITE_USE_MOCK_API !== 'false'
 
 export const api: ApiAdapter = useMock ? new MockApiAdapter() : new RealApiAdapter()
 

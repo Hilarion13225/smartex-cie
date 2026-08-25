@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, DEFAULT_METER_ID } from '../../services/api'
+import { api, DEFAULT_METER_ID, useMock } from '../../services/api'
 import { useAppStore } from '../../stores/app'
 import type { Meter } from '../../types'
 import { fmtFcfa, fmtKwh } from '../../types'
@@ -72,13 +72,18 @@ export function ClientDashboard() {
               <MeterStatusBadge status={meter.status} />
             </Card>
 
+            {/* lastPaymentAmount n'est ajouté qu'en mode mock : les données mock ne changent
+                jamais réellement après une "recharge" simulée (voir recharge.tsx), donc ce
+                boost optimiste est la seule façon de le refléter. En mode réel, meter.creditFcfa
+                vient d'un fetch frais qui reflète déjà toute recharge terminée — l'ajouter en
+                plus double-compterait. */}
             <div className="rounded-2xl bg-gradient-to-br from-orange-500 via-orange-400 to-green-500 text-white p-5 flex items-center justify-between shadow-lg shadow-orange-500/30 animate-slide-up">
               <div>
                 <p className="text-xs text-white font-semibold">⚡ Crédit restant</p>
-                <p className="text-3xl font-extrabold mt-1">{fmtFcfa(meter.creditFcfa + lastPaymentAmount)}</p>
-                <p className="text-sm text-white mt-1">≈ {fmtKwh((meter.creditFcfa + lastPaymentAmount) / 1000 * 1.25)}</p>
+                <p className="text-3xl font-extrabold mt-1">{fmtFcfa(meter.creditFcfa + (useMock ? lastPaymentAmount : 0))}</p>
+                <p className="text-sm text-white mt-1">≈ {fmtKwh((meter.creditFcfa + (useMock ? lastPaymentAmount : 0)) / 1000 * 1.25)}</p>
               </div>
-              <CreditRing percent={Math.min(100, ((meter.creditFcfa + lastPaymentAmount) / 50000) * 100)} />
+              <CreditRing percent={Math.min(100, ((meter.creditFcfa + (useMock ? lastPaymentAmount : 0)) / 50000) * 100)} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">

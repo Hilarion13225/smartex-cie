@@ -10,7 +10,7 @@ import type {
   ConsumptionPoint, CreditStatus, PaymentProvider, RechargeStatus,
 } from '../types'
 import { fcfaToKwh } from '../types'
-import type { ApiAdapter } from './api'
+import type { ApiAdapter, SimulatedRecharge } from './api'
 import { http } from './httpClient'
 import { useAppStore } from '../stores/app'
 import { mockTokens, mockIncidents, mockServices } from '../mocks/data'
@@ -273,6 +273,34 @@ export class RealApiAdapter implements ApiAdapter {
 
   async getRecharge(id: string): Promise<RechargeDetail> {
     return http.get<RechargeDetail>(`/api/v1/recharges/${id}`)
+  }
+
+  // POST /api/v1/recharges — flux client réel (voir README §Scénario T01). idempotencyKey
+  // généré une seule fois par tentative (crypto.randomUUID, disponible nativement dans le
+  // navigateur) pour ne jamais dupliquer une recharge sur un double-clic/retry réseau.
+  async createRecharge(amount: number, provider: PaymentProvider, meterId: string): Promise<SimulatedRecharge> {
+    const customerId = useAppStore.getState().customer?.customerId
+    if (!customerId) throw new Error('Non connecté')
+    const idempotencyKey = `APP-${customerId}-${crypto.randomUUID()}`
+    const created = await http.post<{
+      rechargeId: string; status: string; correlationId: string; meterId: string; amountXof: number
+    }>('/api/v1/recharges', { customerId, meterId, amount, channel: 'APP', paymentProvider: provider, idempotencyKey })
+    return {
+      rechargeId: created.rechargeId,
+      // Pas de concept "transactionId" distinct côté backend (voir mapTransaction) --
+      // rechargeId en fait office, unique et réel.
+      transactionId: created.rechargeId,
+      // Ni tokenId ni tokenValue : le token n'est jamais exposé en clair (RG-C-005) --
+      // voir TokenDetailPage/TokenFallback, adaptés pour ne jamais en inventer un.
+      tokenId: '',
+      commandId: '',
+      correlationId: created.correlationId,
+      amount: created.amountXof,
+      energyValue: +fcfaToKwh(created.amountXof).toFixed(1),
+      provider,
+      meterId: created.meterId,
+      tokenValue: '',
+    }
   }
 
   // Pas d'équivalent backend (le token n'est jamais exposé en clair, RG-C-005) — reste mock.
