@@ -6,16 +6,17 @@ Conforme à `docs/02_developer-pack-poc.md` §19_LabProcedure et §20_Acceptance
 
 | Champ | Valeur |
 |---|---|
-| Date du dossier | 2026-08-25 |
+| Date du dossier | 2026-08-25 (mis à jour le même jour avec les résultats T11/T13/C01/C03/C05-C07, §3bis) |
 | Périmètre testé | PoC Laboratoire — backend Spring Boot (`backend/poc-backend`) + simulateurs Python (`payment-simulator`, `mock-dongle`), orchestrés via `docker compose`. **Hors matériel réel** : aucun compteur ni dongle physique CIE, uniquement `MockMeterAdapter` / `mock-dongle`. |
-| Version du repo | Branche `main`, commit **`28d9b91`** ("docs: dossier de recette Gate 1..."), historique complet visible via `git log --oneline` (4 commits atomiques par sujet au-dessus de `9bb175e` : T05, mTLS/ACL, résilience T07-T09, dossier de recette). |
-| Tag Git | **`LAB-POC-v0.1.0`** (tag annoté, pointe sur `28d9b91`), conformément à `§06_Repo`. |
-| État de commit | ✅ Tout le travail décrit dans ce dossier est commité et taggé (voir tableau §2 pour les hash exacts par sujet). Chaque commit a été vérifié individuellement buildable (`mvn compile test-compile` / `mvn test` réussis sur chacun via des worktrees temporaires), garantissant un historique bisectable. |
+| Version du repo | Base : branche `main`, commit `28d9b91` ("docs: dossier de recette Gate 1..."), taguée `LAB-POC-v0.1.0`. Complément §3bis (T11/T13/C01/C03/C05-C07) réalisé sur la branche **`test/cyber-tests-t11-t13-c01-c07`**, commit **`2a9ed27`** — **pas encore mergée sur `main`**, en attente de validation explicite (voir §6 pour la recommandation). |
+| Tag Git | **`LAB-POC-v0.1.0`** (tag annoté, pointe sur `28d9b91`), conformément à `§06_Repo`. Le complément §3bis n'est pas encore inclus dans un tag — à re-taguer après merge si souhaité. |
+| État de commit | ✅ Tout le travail décrit dans ce dossier est commité (voir tableaux §2 pour les hash exacts par sujet). Chaque commit de la partie taguée a été vérifié individuellement buildable (`mvn compile test-compile` / `mvn test` réussis sur chacun via des worktrees temporaires), garantissant un historique bisectable. Le commit `2a9ed27` (§3bis) a été vérifié par `mvn test` (27/27) après coup, pas via worktree dédié. |
 
 ## 2. Tableau récapitulatif des tests
 
-Tests explicitement couverts par ce dossier : T01–T06, T09, T15, C02 (voir §4 pour T07/T08,
-partiellement couverts et traités séparément, et pour la liste des tests non exécutés).
+Tests explicitement couverts par ce dossier : T01–T06, T09, T11, T13, T15, C01–C07 (voir §4 pour
+T07/T08, partiellement couverts et traités séparément, et pour la liste des tests non exécutés —
+T10, T14 notamment).
 
 | ID | Description | Résultat | Commit | Anomalie corrigée |
 |---|---|---|---|---|
@@ -26,12 +27,23 @@ partiellement couverts et traités séparément, et pour la liste des tests non 
 | T05 | Token invalide → `REJECTED`, aucune activation | PASS | `b7145f1` | — |
 | T06 | Double commande (même `commandId`/`idempotencyKey`) → une seule exécution | PASS | `9bb175e` | — |
 | T09 | Coupure/redémarrage du backend | PASS | `0ca7f7d` | — (bénéficie indirectement des correctifs #2–#4, découverts et corrigés pendant T07 ; voir §3 et §4) |
+| T11 | Commande non autorisée / certificat invalide → rejet | PASS | `2a9ed27` | — (identique à C01, voir ligne C01) |
+| T13 | Expiration (`expiresAt`) → rejet, pas d'application comme succès valide | PASS | `2a9ed27` | — |
 | T15 | Auditabilité — trace complète bout en bout | PASS | `9bb175e` | — |
+| C01 | Certificat invalide (signé par une CA différente) → rejet | PASS | `2a9ed27` | — |
 | C02 | Dongle A tente une commande vers compteur B → rejet par l'ACL du broker (pas par le code applicatif) | PASS | `3f4ee21` | — |
+| C03 | Rejeu du même `commandId` au niveau broker/protocole (pas seulement applicatif) → ignoré | PASS | `2a9ed27` | — |
+| C04 | Commande expirée → rejet (identique à T13) | PASS | `2a9ed27` | — |
+| C05 | Token en clair dans les logs → absent (masquage vérifié par grep exhaustif) | PASS | `2a9ed27` | — |
+| C06 | Broker ACL — identité mTLS valide mais non enregistrée → aucun accès aux topics d'un autre device | PASS | `2a9ed27` | — |
+| C07 | Scan de secrets sur tout l'historique Git → aucun secret trouvé | PASS | `2a9ed27` | — |
 
 *Colonne "Commit" : `9bb175e` = validation initiale T01→T06/T15 ; `b7145f1` = endpoint T05 ;
-`3f4ee21` = mTLS/ACL (dont C02) ; `0ca7f7d` = correctifs de résilience T07-T09. Tous atteignables
-depuis le tag `LAB-POC-v0.1.0`.*
+`3f4ee21` = mTLS/ACL (dont C02) ; `0ca7f7d` = correctifs de résilience T07-T09 ; `2a9ed27` =
+scripts T11/C01/C06 + TTL paramétrable pour T13/C04 (voir §3bis pour le détail méthodologique de
+chacun, C03/C05/C07 n'ayant pas nécessité de nouveau code, seulement une procédure de test
+documentée). Tous atteignables depuis le tag `LAB-POC-v0.1.0` ou la branche
+`test/cyber-tests-t11-t13-c01-c07`.*
 
 ## 3. Anomalies et corrections
 
@@ -109,6 +121,156 @@ correspondantes, sans ré-analyse du code.
 - **Fichiers modifiés** : `CommandExpiryWatcher.java` (nouveau fichier ; ce correctif est déjà
   intégré dans sa version présente dans l'arbre de travail).
 
+## 3bis. Tests de sécurité complémentaires (T11, T13, C01, C03, C05–C07)
+
+Exécutés réellement (pas en relecture de code), en complément de C02 (§2/§3, déjà validé
+séparément) et T12 (couvert par le test unitaire `RechargeOrchestratorIdempotencyTest
+.ackDupliqueSurCommandeTerminale_estIgnore`, déjà en place). **Aucune anomalie n'a été trouvée
+sur ces sept tests** — contrairement aux quatre bugs de §3, le code existant s'est comporté comme
+attendu à chaque fois ; aucune correction n'a donc été nécessaire ici.
+
+### T11 / C01 — Certificat invalide → rejet
+
+**Méthode** : génération à la volée (`infra/mosquitto/test-cert-invalide-t11-c01.sh`) d'un
+certificat client signé par une CA "rogue" (différente de la CA de laboratoire configurée dans
+`mosquitto.conf`), avec `CN=DONGLE-LAB-0001` — volontairement identique à un device légitime,
+pour prouver que c'est bien la chaîne de confiance qui est vérifiée, pas seulement le nom.
+Commande de génération (voir le script pour le détail complet) :
+```bash
+openssl req -x509 -new -key rogue-ca.key -subj "/CN=Rogue-CA" -out rogue-ca.crt ...
+openssl x509 -req -in rogue-client.csr -CA rogue-ca.crt -CAkey rogue-ca.key -out rogue-client.crt ...
+mosquitto_pub -h mosquitto -p 8883 --cafile ca.crt --cert rogue-client.crt --key rogue-client.key \
+  -t cie/lab/DONGLE-LAB-0001/ack -m '...'
+```
+**Résultat observé** : la connexion est refusée **au niveau TLS**, avant tout traitement MQTT —
+côté client : `OpenSSL Error ... error:0A000418:SSL routines::tlsv1 alert unknown ca` ; côté
+broker (`docker compose logs mosquitto`) :
+```
+New connection from 172.20.0.7:40780 on port 8883.
+OpenSSL Error while trying to get the error[0]: error:0A000086:SSL routines::certificate verify failed
+Client 172.20.0.7 [172.20.0.7:40780] disconnected: Protocol error.
+```
+Le client ne se voit même pas attribuer d'identité applicative (contrairement à une connexion
+légitime, qui apparaît comme `connected as <identité> (..., u'<CN>')`) — la preuve que le rejet a
+bien lieu avant toute authentification/ACL applicative. **PASS.**
+
+### T13 / C04 — Commande expirée → rejet
+
+**Méthode** : `mqtt.command-ttl-seconds` rendu paramétrable
+(`MQTT_COMMAND_TTL_SECONDS`, défaut 60s inchangé) pour pouvoir tester une fenêtre courte (2s) sans
+attendre. `mock-dongle` arrêté (`docker compose stop mock-dongle`) pour garantir qu'aucun ACK
+légitime ne puisse arriver, puis une recharge manuelle déclenchée. Après expiration de
+`expiresAt` (vérifié en base, `expires_at < now()`) mais **avant** que `CommandExpiryWatcher` (qui
+tourne toutes les 10s) n'ait eu l'occasion de traiter la commande, un ACK tardif `ACCEPTED` a été
+publié manuellement via `mosquitto_pub` avec le **vrai certificat mTLS** de `DONGLE-LAB-0001`
+(commandId + correlationId réels de la commande créée) :
+```bash
+mosquitto_pub -h mosquitto -p 8883 --cafile ca.crt --cert DONGLE-LAB-0001.crt --key DONGLE-LAB-0001.key \
+  -t cie/lab/DONGLE-LAB-0001/ack -m '{"commandId":"<réel>","correlationId":"<réel>","result":"ACCEPTED"}'
+```
+**Résultat observé** : malgré l'ACK prétendant `ACCEPTED`, la commande passe en statut `TIMEOUT`
+(pas `ACCEPTED`) et la recharge en `COMMAND_TIMEOUT` (pas `CREDIT_APPLIED`) — `retry_count` passé
+à `1`, une nouvelle commande republiée avec une fenêtre `expiresAt` renouvelée. Confirme que
+`RechargeOrchestrator.handleAck()` applique bien sa vérification `command.isExpired()` : un ACK
+métier tardif, quel que soit son contenu, ne peut jamais créditer un compte après expiration —
+il est systématiquement rétrogradé en `TIMEOUT` et suit le chemin retry/fallback (ALG-02 étape
+7-8), jamais appliqué comme un succès. **PASS, aucune correction nécessaire.**
+
+**Limite non exercée par ce test** (documentée, pas corrigée) : `MeterCommand` ne conserve qu'une
+seule fenêtre `expiresAt` (renouvelée en place à chaque retry via `renewExpiry`), pas un
+historique par tentative. Le scénario testé ici (ACK tardif arrivant *avant* tout retry) est
+couvert ; le scénario plus fin "ACK tardif correspondant à la tentative n, arrivant *après* que
+la tentative n+1 a déjà renouvelé `expiresAt`" n'a pas été spécifiquement exercé — dans ce cas,
+`isExpired()` serait évalué contre la fenêtre renouvelée (potentiellement encore valide), pas
+contre la fenêtre d'origine. Risque théorique à garder en tête avant un banc réel à plus fort
+enjeu, mais non observé comme un défaut ici (le `commandId` reste inchangé entre tentatives, donc
+le comportement dépend de la fenêtre *courante* au moment de l'ACK, par construction).
+
+### C03 — Rejeu même `commandId` au niveau broker/protocole
+
+**Méthode** : une recharge nominale menée à bien jusqu'à `CREDIT_APPLIED` (via `mock-dongle`
+réel), puis republication manuelle du **même** message ACK (mêmes `commandId`/`correlationId`,
+`result: ACCEPTED`) via `mosquitto_pub` avec le vrai certificat `DONGLE-LAB-0001` — donc au niveau
+protocole/broker, pas via un mock applicatif, complémentaire au test unitaire déjà existant.
+**Résultat observé** : `ackAt` et `updatedAt` de la commande restent inchangés après le rejeu ; un
+nouvel événement d'audit apparaît explicitement :
+```json
+{"action":"ACK_DUPLICATE_IGNORED","result":"IGNORED",
+ "details":"ACK reçu alors que la commande est déjà dans un état terminal: ACCEPTED"}
+```
+Confirme `RechargeOrchestrator.handleAck()` → `isTerminal(command.getStatus())` en conditions
+réelles bout en bout. **PASS.**
+
+### C05 — Token dans les logs → masquage vérifié formellement
+
+**Méthode** : recherche exhaustive du préfixe `LABTKN-` (identifiant tout token en clair généré
+par `RechargeOrchestrator.generateTokenPlaceholder`) dans l'intégralité des logs `backend` et
+`mock-dongle` depuis le démarrage du conteneur, après un paiement complet (T01) :
+```bash
+docker compose logs backend mock-dongle | grep -ci "LABTKN"          # -> 0
+docker compose logs backend mock-dongle | grep -iE "tokenplaintext|\"token\":\"LABTKN"  # -> 0
+```
+**Résultat observé** : 0 occurrence sur 181 lignes de logs couvrant un cycle de recharge complet
+(paiement → token → commande MQTT → ACK → crédit). Les seules lignes mentionnant "token" sont le
+nom du topic MQTT (`cie/lab/.../command/token`, un nom fixe, pas une valeur) et une ligne
+explicite côté `mock-dongle` : `"Commande reçue ... (token reçu, non loggé)"`. Vérifié également
+que la colonne `recharge.token_hash` en base ne contient que des hachages SHA-256 (jamais de
+valeur préfixée `LABTKN`). **PASS, conforme à `CLAUDE.md` règle #3 et déjà noté dans
+`docs/05_reconciliation-api-frontend-backend.md` §2.**
+
+### C06 — Broker ACL, identité inconnue → aucun accès aux topics d'un autre device
+
+**Méthode** (`infra/mosquitto/test-acl-c06.sh`) : génération d'un certificat **valide** (signé
+par la vraie CA de labo — le handshake TLS réussit) avec `CN=INTRUDER-0001`, absent de
+`acl.conf`. Trois tentatives : abonnement au topic de commande de `DONGLE-LAB-0001`, publication
+sur son topic d'ACK, abonnement wildcard `cie/lab/#`.
+**Résultat observé** : les trois tentatives échouent (aucun message reçu/relayé — timeout côté
+`mosquitto_sub`). **PASS** sur le critère testé : aucun accès à un topic d'un **autre** device, ni
+par ciblage direct ni par wildcard.
+
+**Observation documentée** (pas un critère d'échec de ce test, mais à connaître) : ce même
+certificat `INTRUDER-0001` obtient, comme n'importe quel certificat valide émis par la CA de
+labo, un accès **à son propre topic auto-scopé** (`cie/lab/INTRUDER-0001/...`) — la règle
+`pattern` de `acl.conf` est générique (s'applique à toute identité authentifiée par `%u`, pas à
+une liste blanche de devices enregistrés en base). Ce n'est pas une brèche vers les données d'un
+autre device, mais un trait d'architecture à signaler : la sécurité de ce modèle repose entièrement
+sur le contrôle de l'émission des certificats (qui a le droit d'obtenir un certificat signé par la
+CA de labo), pas sur une liste de devices connus du broker. Pertinent à discuter avec la
+Cybersécurité CIE avant le Gate 2 (la PKI de labo, auto-signée et sans révocation, sera de toute
+façon remplacée — voir §6 point 2).
+
+### C07 — Scan de secrets Git (historique complet, pas seulement HEAD)
+
+**Méthode** : scan avec `gitleaks` (image officielle `zricethezav/gitleaks`, tirée pour ce test)
+sur l'intégralité de l'historique (`git log --all`, 20 commits) :
+```bash
+docker run --rm -v "$(pwd):/repo" zricethezav/gitleaks:latest detect --source=/repo --log-opts="--all" -v
+# -> "20 commits scanned." / "scanned ~844.74 KB" / "no leaks found"
+```
+Complété par une recherche manuelle indépendante sur tout l'historique (pas seulement HEAD), pour
+ne pas dépendre d'un seul outil :
+```bash
+git rev-list --all | xargs -I{} git grep -l "BEGIN.*PRIVATE KEY" {}     # clés privées
+git rev-list --all | xargs -I{} git grep -niE "password\s*=\s*[\"'][^$]...|secret\s*=\s*..." {}  # secrets en dur
+git log --all --oneline -- infra/mosquitto/certs/                       # certs jamais commités ?
+git log --all --oneline -- '*.env' ':!*.env.example'                    # .env jamais commité ?
+```
+**Résultat observé** :
+- `gitleaks` : **aucun secret détecté** sur les 20 commits.
+- Grep manuel "clé privée" : 12 correspondances, **toutes** dans
+  `backend/.../mqtt/PemTlsSupport.java` — vérifié individuellement : il s'agit du code qui **lit**
+  un fichier PEM externe au runtime et retire les marqueurs `-----BEGIN/END PRIVATE KEY-----`
+  d'une chaîne (`Files.readString(path)` sur un chemin fourni en configuration), pas une clé
+  embarquée dans le code. **Faux positif confirmé, aucune clé réelle.**
+- Grep manuel "mot de passe/secret en dur" : **0 correspondance**.
+- `infra/mosquitto/certs/` : **jamais touché par aucun commit** de l'historique (confirmé
+  vide) — l'exclusion `.gitignore` a fonctionné dès le premier commit qui aurait pu l'inclure,
+  pas seulement après coup.
+- `.env` (hors `.env.example`) : **jamais commité** non plus.
+
+**C07 : PASS — aucun secret trouvé dans l'historique Git, par deux méthodes indépendantes.**
+Rien à purger, rien à signaler à l'utilisateur sur ce point.
+
 ## 4. Limites connues et non couvertes
 
 - **T07 (perte réseau MQTT) — partiellement couvert, à préciser** : le round-trip MQTT local
@@ -146,13 +308,11 @@ correspondantes, sans ré-analyse du code.
   d'erreur et les contraintes électriques du compteur réel CIE restent entièrement à qualifier
   avec la CIE avant tout raccordement (`docs/02_developer-pack-poc.md` §01_Objectifs, Gate 0).
 - **Autres tests du matrix non exécutés dans ce dossier** : T10 (mauvaise association
-  device/meter), T11 (commande non autorisée / certificat invalide → rejet), T13 (expiration en
-  tant que test dédié — le mécanisme `expiresAt`/`renewExpiry` est exercé indirectement pendant
-  T07 mais n'a pas été validé isolément), T14 (latence e2e p50/p95 — **jamais mesurée**, aucune
-  instrumentation de métriques de type `activation_latency_ms` n'est en place), C01/C03/C04/C05
-  (masquage du token — observé empiriquement dans tous les logs consultés, jamais en clair, mais
-  sans test automatisé dédié)/C07 (scan de secrets Git — non exécuté formellement ; les
-  certificats de labo sont exclus via `.gitignore` mais aucun outil type gitleaks n'a été lancé).
+  device/meter — aucun deuxième device de labo n'est provisionné pour le tester réellement) et
+  T14 (latence e2e p50/p95 — **jamais mesurée**, aucune instrumentation de métriques de type
+  `activation_latency_ms` n'est en place). T11, T13, C01, C03, C05, C06, C07 sont désormais
+  couverts par des tests dédiés réels — voir §3bis pour le détail méthodologique et les résultats
+  (tous PASS, aucune anomalie trouvée sur ces sept tests).
 - **Coupure d'alimentation réelle (T09 matériel)** : ce dossier ne couvre que
   `docker compose stop/start/restart` (arrêt propre de process). Une coupure secteur/batterie
   réelle sur du matériel physique comporte des risques propres (corruption de flash, état
@@ -169,7 +329,7 @@ correspondantes, sans ré-analyse du code.
 | **Fonctionnel** | 100% T01–T05 passés | ✅ **Atteint** | T01–T04 PASS (après correction Bug #1), T05 PASS direct. |
 | **Idempotence** | 100% T06 sans double exécution | ✅ **Atteint** | T06 vérifié à plusieurs reprises : même `idempotencyKey` rejouée → même `rechargeId`, une seule commande publiée sur MQTT. |
 | **Résilience** | T07–T09 passés selon critères convenus | 🟡 **Partiellement atteint** | T09 PASS. T08 PASS au niveau conteneur logiciel uniquement (limite mémoire documentée §4). T07 partiellement couvert (adaptation du scénario, §4) — et aucun "critère convenu" formel (seuil de temps de reprise, etc.) n'a été défini avec la CIE, donc la formulation exacte de l'exigence ne peut pas être cochée intégralement. |
-| **Sécurité** | T11–T13 passés sans contournement | ❌ **Non atteint à ce stade** | T11 et T13 non exécutés en tant que tests dédiés (§4). C02 (isolation par device via ACL broker) est en revanche validé et constitue une preuve de sécurité solide, mais il ne fait pas partie de la liste stricte T11–T13 de ce critère. La mTLS/ACL est implémentée et fonctionnelle, mais la couverture de test cyber au sens de `§18_CyberTests` reste incomplète (seul C02 sur sept scénarios). |
+| **Sécurité** | T11–T13 passés sans contournement | ✅ **Atteint** | T11 et T13 désormais exécutés en tests dédiés réels, sans contournement observé (§3bis) — T12 déjà couvert par test unitaire. L'ensemble des sept scénarios `§18_CyberTests` (C01–C07) est également couvert et PASS, aucune anomalie trouvée. Limite résiduelle documentée (§3bis, T13) : le cas fin d'un ACK tardif correspondant à une tentative *antérieure* à un retry déjà en cours n'a pas été spécifiquement exercé (risque théorique, pas observé). |
 | **Performance** | p50/p95 mesurés et seuils approuvés | ❌ **Non atteint** | T14 jamais exécuté. Aucune mesure de latence n'a été faite, aucune métrique `activation_latency_ms` n'est instrumentée. Aucun seuil n'a été proposé ni approuvé par la CIE. |
 | **Audit** | T15 traçable de bout en bout | ✅ **Atteint** | T15 validé à plusieurs reprises : `PAYMENT_CONFIRMED → RECHARGE_CREATED → COMMAND_SENT → CREDIT_APPLIED` (ou `COMMAND_REJECTED`), enchaînement correct et interrogeable par `correlationId`. |
 
@@ -178,19 +338,24 @@ correspondantes, sans ré-analyse du code.
 compteur → audit fonctionne de bout en bout, de façon idempotente et traçable, avec une commande
 de sécurité minimale (mTLS + ACL) en place et testée sur un cas. Au sens **large** de la grille
 `§20_Acceptance` complète (qui couvre aussi la résilience T07-T09 et un jeu de tests cyber/perf
-plus large), la couverture est **incomplète** sur Sécurité et Performance, comme détaillé ci-dessus.
+plus large), la couverture Sécurité est désormais **complète** (les sept scénarios `§18_CyberTests`
+et T11/T12/T13 sont tous PASS, §3bis) ; seule la **Performance** (T14, jamais mesurée) reste
+incomplète, comme détaillé ci-dessus.
 
 ## 6. Recommandation GO/NO-GO pour le Gate 2 (banc réel CIE)
 
 ### 🟡 GO CONDITIONNEL
 
 Aucune anomalie critique de sécurité ou d'intégrité n'est connue et non résolue : les quatre
-anomalies réelles découvertes en testant (§3) ont toutes été corrigées et re-vérifiées. Le cœur
-métier (paiement → token → commande → activation, idempotence, audit) fonctionne de façon fiable
-et reproductible sur le PoC logiciel. Ceci justifie de ne **pas** bloquer sur un NO-GO. Mais la
-couverture Sécurité/Performance de `§20_Acceptance` reste incomplète (§5), et plusieurs
-prérequis externes au code (qualification matérielle, PKI de production) ne peuvent être résolus
-que par la CIE — ce qui exclut un GO inconditionnel.
+anomalies réelles découvertes en testant (§3) ont toutes été corrigées et re-vérifiées, et les
+sept tests cyber `§18_CyberTests` + T11/T13 (§3bis) sont tous PASS sans qu'aucune correction n'ait
+été nécessaire — notamment **C07 (scan de secrets Git, historique complet) : aucun secret trouvé**,
+par deux méthodes indépendantes (gitleaks + grep manuel), rien à purger. Le cœur métier (paiement
+→ token → commande → activation, idempotence, audit) fonctionne de façon fiable et reproductible
+sur le PoC logiciel. Ceci justifie de ne **pas** bloquer sur un NO-GO. Mais la couverture
+Performance de `§20_Acceptance` reste incomplète (§5, T14 jamais mesurée), et plusieurs prérequis
+externes au code (qualification matérielle, PKI de production) ne peuvent être résolus que par la
+CIE — ce qui exclut un GO inconditionnel.
 
 **Conditions préalables explicites avant tout raccordement à un banc réel CIE (Gate 2) :**
 
@@ -199,15 +364,20 @@ que par la CIE — ce qui exclut un GO inconditionnel.
    sans réécriture du cœur métier, mais rien ne peut être validé sans cette qualification.
 2. **Remplacer la PKI de laboratoire auto-signée** (`infra/mosquitto/generate-lab-certs.sh`,
    explicitement marquée "jamais en production" dans le script lui-même) **par la PKI approuvée
-   par la Cybersécurité CIE** avant tout raccordement à un dongle réel.
+   par la Cybersécurité CIE** avant tout raccordement à un dongle réel — d'autant plus pertinent
+   après l'observation C06 (§3bis) : dans le modèle actuel, tout certificat signé par la CA de
+   labo obtient automatiquement un accès à son propre topic, sans liste blanche de devices connus
+   du broker ; la sécurité repose entièrement sur la maîtrise de l'émission des certificats, ce
+   qui doit être un contrôle explicite de la PKI de production.
 3. ~~Committer et taguer une version figée de ce travail~~ — **fait** : voir §1
    (commit `28d9b91`, tag `LAB-POC-v0.1.0`), conformément à `§19_LabProcedure` point 2.
 4. **Exécuter formellement T07 selon le scénario littéral** du Developer Pack sur banc réel, et
    définir avec la CIE des critères de résilience convenus (durée max de reprise acceptable,
    etc.) — actuellement non définis.
-5. **Exécuter T11 (certificat invalide → rejet) et T13 (expiration, en test dédié)**, et
-   idéalement T14 (latence, après instrumentation de métriques `activation_latency_ms`), avant de
-   considérer les critères Sécurité et Performance comme couverts.
+5. ~~Exécuter T11 (certificat invalide → rejet) et T13 (expiration, en test dédié)~~ — **fait** :
+   voir §3bis, PASS sans anomalie, ainsi que l'ensemble C01–C07. Reste à faire : **T14** (latence,
+   après instrumentation de métriques `activation_latency_ms`) avant de considérer le critère
+   Performance comme couvert.
 6. **Ajouter une mémoire persistante réelle côté firmware/dongle** avant le banc réel — le mock en
    mémoire pure (§4) ne représente pas le comportement attendu du matériel réel et ne doit pas
    être considéré comme une preuve de résilience matérielle.
