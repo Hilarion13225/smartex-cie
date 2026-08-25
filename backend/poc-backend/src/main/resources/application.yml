@@ -57,6 +57,18 @@ jwt:
   secret: ${JWT_SECRET:cie-lab-poc-jwt-secret-do-not-use-in-production-change-me}
   expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
 
+# OtpService/OtpSender : canal d'envoi du code OTP -- "console" (défaut, voir
+# ConsoleOtpSender) ou "brevo" (envoi réel par email, voir BrevoOtpSender). brevo.* n'a
+# besoin d'être renseigné que si otp.sender=brevo (sinon BrevoOtpSender n'est même pas
+# instancié, voir son @ConditionalOnProperty).
+otp:
+  sender: ${OTP_SENDER:console}
+
+brevo:
+  api-key: ${BREVO_API_KEY:}
+  sender-email: ${BREVO_SENDER_EMAIL:}
+  sender-name: ${BREVO_SENDER_NAME:CIE Smart Prepaid}
+
 # CorsConfig (profil dev uniquement) : origine(s) publique(s) supplémentaire(s) autorisée(s)
 # en plus de localhost/RFC1918 (voir docker-compose.prod.yml, déploiement de démo VPS).
 app:

@@ -45,6 +45,22 @@ public class Customer {
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
 
+    /** Utilisé pour l'envoi du code OTP par email (voir BrevoOtpSender) — optionnel. */
+    @Column(name = "email")
+    private String email;
+
+    /** Association Client<->Compteur réelle (voir meter.domain.Meter, V8 migration) --
+     * null tant qu'aucun compteur n'a été validé/lié (comptes existants avant cette
+     * fonctionnalité, ou rôles support sans compteur propre). UNIQUE en base : un compteur
+     * n'appartient qu'à un seul client (voir AuthService.register). */
+    @Column(name = "meter_id")
+    private String meterId;
+
+    /** Fourni par le client à l'inscription, jamais vérifié contre un registre de contrats
+     * réel (qui n'existe pas dans ce PoC) -- conservé tel quel, à titre de référence. */
+    @Column(name = "contract_id")
+    private String contractId;
+
     protected Customer() {
         // JPA
     }
@@ -64,6 +80,18 @@ public class Customer {
         this.lastLoginAt = Instant.now();
     }
 
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    /** Lie ce client à un compteur du registre (voir MeterRepository) et conserve le
+     * numéro de contrat déclaré -- appelé uniquement après validation (meterId existant
+     * dans le registre ET pas déjà lié à un autre client), voir AuthService.register. */
+    public void linkMeter(String meterId, String contractId) {
+        this.meterId = meterId;
+        this.contractId = contractId;
+    }
+
     public UUID getCustomerId() { return customerId; }
     public String getPhoneNumber() { return phoneNumber; }
     public String getDisplayName() { return displayName; }
@@ -72,4 +100,7 @@ public class Customer {
     public boolean isPhoneVerified() { return phoneVerified; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getLastLoginAt() { return lastLoginAt; }
+    public String getEmail() { return email; }
+    public String getMeterId() { return meterId; }
+    public String getContractId() { return contractId; }
 }

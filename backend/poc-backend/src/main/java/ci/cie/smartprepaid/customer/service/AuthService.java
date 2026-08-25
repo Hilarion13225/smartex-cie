@@ -4,6 +4,7 @@ import ci.cie.smartprepaid.common.DomainException;
 import ci.cie.smartprepaid.customer.domain.Customer;
 import ci.cie.smartprepaid.customer.domain.CustomerRole;
 import ci.cie.smartprepaid.customer.repo.CustomerRepository;
+import ci.cie.smartprepaid.meter.repo.MeterRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,20 +20,23 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private final CustomerRepository customerRepository;
+    private final MeterRepository meterRepository;
     private final OtpService otpService;
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
 
-    public AuthService(CustomerRepository customerRepository, OtpService otpService, JwtService jwtService,
-                        PasswordEncoder passwordEncoder) {
+    public AuthService(CustomerRepository customerRepository, MeterRepository meterRepository,
+                        OtpService otpService, JwtService jwtService, PasswordEncoder passwordEncoder) {
         this.customerRepository = customerRepository;
+        this.meterRepository = meterRepository;
         this.otpService = otpService;
         this.jwtService = jwtService;
         this.passwordEncoder = passwordEncoder;
     }
 
     @Transactional
-    public void register(String phoneNumber, String displayName, String password) {
+    public void register(String phoneNumber, String displayName, String password, String email,
+                          String meterId, String contractId) {
         if (customerRepository.findByPhoneNumber(phoneNumber).isPresent()) {
             throw new DomainException("DUPLICATE", "Un compte existe déjà pour ce numéro: " + phoneNumber);
         }
@@ -41,6 +45,22 @@ public class AuthService {
         // qui n'en fournirait pas.
         String passwordHash = (password == null || password.isBlank()) ? null : passwordEncoder.encode(password);
         Customer customer = new Customer(phoneNumber, displayName, CustomerRole.CLIENT, passwordHash);
+        if (email != null && !email.isBlank()) {
+            customer.setEmail(email);
+        }
+        // Association Client<->Compteur réelle : validée contre le registre `meter` (géré
+        // par l'admin, voir MeterController) -- jamais une valeur inventée/acceptée telle
+        // quelle. Un compteur inconnu ou déjà lié à un autre client fait échouer
+        // l'inscription explicitement (erreur honnête), plutôt que de laisser le client
+        // croire qu'il verra les données d'un compteur qui n'est pas vraiment le sien.
+        if (meterId != null && !meterId.isBlank()) {
+            meterRepository.findById(meterId)
+                    .orElseThrow(() -> new DomainException("NOT_FOUND", "Compteur inconnu: " + meterId));
+            if (customerRepository.findByMeterId(meterId).isPresent()) {
+                throw new DomainException("DUPLICATE", "Ce compteur est déjà associé à un autre compte: " + meterId);
+            }
+            customer.linkMeter(meterId, contractId);
+        }
         customerRepository.save(customer);
         otpService.issueChallenge(phoneNumber);
     }

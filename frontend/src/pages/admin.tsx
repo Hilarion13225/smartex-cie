@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../services/api'
 import { ApiError } from '../services/httpClient'
-import type { AuditEvent, Device, DsiUser, RechargeDetail, ServiceHealth, Token } from '../types'
+import type { AuditEvent, Device, DsiUser, MeterRegistryEntry, RechargeDetail, ServiceHealth, Token } from '../types'
 import { fmtFcfa } from '../types'
 import { Badge, Button, Card, KpiCard, MeterStatusBadge, RechargeStatusBadge, Skeleton } from '../components/ui'
 
@@ -98,6 +98,95 @@ export function AdminDevices() {
         </table>
       )}
     </Card>
+  )
+}
+
+// Registre des compteurs connus de la CIE (voir meter.domain.Meter côté backend) --
+// distinct de AdminDevices (les dongles) : un compteur peut être enregistré ici avant
+// même qu'un dongle y soit installé (rollout réel typique). Base de la validation
+// Client<->Compteur à l'inscription (voir AuthService.register).
+export function AdminMeters() {
+  const [meters, setMeters] = useState<MeterRegistryEntry[] | null>(null)
+  const [meterId, setMeterId] = useState('')
+  const [label, setLabel] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = () => api.listMeterRegistry().then(setMeters).catch(() => setMeters([]))
+  useEffect(() => { load() }, [])
+
+  const register = async () => {
+    if (!meterId.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      await api.registerMeter(meterId.trim(), label.trim() || undefined)
+      setMeterId('')
+      setLabel('')
+      await load()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Enregistrement impossible')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-5">
+        <p className="font-semibold text-sm mb-1">Enregistrer un compteur</p>
+        <p className="text-xs text-gray-400 mb-4">
+          Un client ne peut associer son compte qu'à un compteur déjà présent dans cette liste
+          (voir AuthService.register côté backend) — l'enregistrer ici ne suppose pas qu'un
+          dongle y soit déjà installé.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            value={meterId}
+            onChange={(e) => setMeterId(e.target.value)}
+            placeholder="Numéro de compteur (ex: 58901234567)"
+            className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-cie-500"
+          />
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Libellé (optionnel)"
+            className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-cie-500"
+          />
+          <Button onClick={register} disabled={saving || !meterId.trim()}>
+            {saving ? 'Enregistrement...' : 'Enregistrer'}
+          </Button>
+        </div>
+        {error && <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-3 mt-3">{error}</div>}
+      </Card>
+
+      <Card className="overflow-x-auto">
+        {!meters ? <Skeleton className="h-64 m-4" /> : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs text-gray-400 text-left border-b border-gray-100">
+                <th className="px-4 py-3">Compteur</th><th>Libellé</th><th>Dongle installé</th>
+                <th>Client associé</th><th>Enregistré le</th>
+              </tr>
+            </thead>
+            <tbody>
+              {meters.map((m) => (
+                <tr key={m.meterId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                  <td className="px-4 py-3 font-semibold font-mono">{m.meterId}</td>
+                  <td>{m.label ?? '—'}</td>
+                  <td><Badge color={m.hasDevice ? 'green' : 'orange'}>{m.hasDevice ? 'Oui' : 'Non'}</Badge></td>
+                  <td className="font-mono text-xs">{m.claimedByCustomerId ?? '—'}</td>
+                  <td className="text-xs text-gray-500">{new Date(m.createdAt).toLocaleString('fr-FR')}</td>
+                </tr>
+              ))}
+              {meters.length === 0 && (
+                <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400">Aucun compteur enregistré.</td></tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </Card>
+    </div>
   )
 }
 

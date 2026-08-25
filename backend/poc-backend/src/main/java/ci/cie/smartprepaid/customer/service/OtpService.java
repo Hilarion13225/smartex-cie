@@ -1,6 +1,7 @@
 package ci.cie.smartprepaid.customer.service;
 
 import ci.cie.smartprepaid.customer.domain.OtpChallenge;
+import ci.cie.smartprepaid.customer.repo.CustomerRepository;
 import ci.cie.smartprepaid.customer.repo.OtpChallengeRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -22,6 +23,7 @@ public class OtpService {
     private static final long TTL_SECONDS = 300; // 5 min — raisonnable pour un PoC labo
 
     private final OtpChallengeRepository repository;
+    private final CustomerRepository customerRepository;
     private final PasswordEncoder passwordEncoder;
     private final OtpSender sender;
     private final SecureRandom random = new SecureRandom();
@@ -32,9 +34,11 @@ public class OtpService {
     // soit le numéro/défi en cours, à la place du hash réel.
     private final String devStaticCode;
 
-    public OtpService(OtpChallengeRepository repository, PasswordEncoder passwordEncoder, OtpSender sender,
+    public OtpService(OtpChallengeRepository repository, CustomerRepository customerRepository,
+                       PasswordEncoder passwordEncoder, OtpSender sender,
                        @Value("${otp.dev-static-code:}") String devStaticCode) {
         this.repository = repository;
+        this.customerRepository = customerRepository;
         this.passwordEncoder = passwordEncoder;
         this.sender = sender;
         this.devStaticCode = devStaticCode;
@@ -46,7 +50,10 @@ public class OtpService {
         OtpChallenge challenge = new OtpChallenge(phoneNumber, passwordEncoder.encode(code),
                 Instant.now().plusSeconds(TTL_SECONDS));
         repository.save(challenge);
-        sender.send(phoneNumber, code);
+        // email résolu ici (pas dans OtpSender) : la logique de lookup appartient au domaine,
+        // pas au canal de livraison -- voir OtpSender.send, email peut être null.
+        String email = customerRepository.findByPhoneNumber(phoneNumber).map(c -> c.getEmail()).orElse(null);
+        sender.send(phoneNumber, email, code);
     }
 
     /** Vérifie le code le plus récent pour ce numéro ; consomme le défi si valide (anti-rejeu). */

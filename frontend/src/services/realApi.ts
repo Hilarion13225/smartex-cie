@@ -7,7 +7,7 @@
 import type {
   Customer, Meter, AuditEvent, RechargeDetail, MeterStatusResponse, Transaction,
   Alert, AlertSeverity, DsiUser, Device, MeterStatus,
-  ConsumptionPoint, CreditStatus, PaymentProvider, RechargeStatus,
+  ConsumptionPoint, CreditStatus, PaymentProvider, RechargeStatus, MeterRegistryEntry,
 } from '../types'
 import { fcfaToKwh } from '../types'
 import type { ApiAdapter, SimulatedRecharge } from './api'
@@ -22,10 +22,10 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const LAB_METER_ID = 'CIE-LAB-0001'
 
 // Backend CustomerResponse : customerId, phoneNumber, displayName, role, phoneVerified,
-// createdAt, lastLoginAt — pas de firstName/lastName séparés, pas d'email, pas de
-// meterId/contractId (aucune association Customer↔Meter n'existe encore côté backend,
-// voir docs/05 §8 item 4). On mappe du mieux possible vers le type frontend Customer sans
-// inventer les champs manquants (chaînes vides plutôt que valeurs plausibles mais fausses).
+// createdAt, lastLoginAt, email, meterId, contractId (association Client<->Compteur réelle,
+// voir customer.domain.Customer + meter.domain.Meter côté backend) — pas de firstName/
+// lastName séparés. On mappe du mieux possible vers le type frontend Customer sans inventer
+// les champs manquants (chaînes vides plutôt que valeurs plausibles mais fausses).
 export type BackendRole = 'CLIENT' | 'CIE_OPERATOR' | 'CIE_ADMIN' | 'DSI_ADMIN'
 
 interface BackendCustomer {
@@ -36,6 +36,9 @@ interface BackendCustomer {
   phoneVerified: boolean
   createdAt: string
   lastLoginAt: string | null
+  email: string | null
+  meterId: string | null
+  contractId: string | null
 }
 
 // Le rôle backend est réel et utile (ex: navigation post-login) même si le type frontend
@@ -50,9 +53,9 @@ function mapCustomer(c: BackendCustomer): RealCustomer {
     firstName: firstName || c.displayName,
     lastName: rest.join(' '),
     phone: c.phoneNumber,
-    email: '',
-    meterId: '',
-    contractId: '',
+    email: c.email ?? '',
+    meterId: c.meterId ?? '',
+    contractId: c.contractId ?? '',
     createdAt: c.createdAt,
     role: c.role,
   }
@@ -197,19 +200,21 @@ export class RealApiAdapter implements ApiAdapter {
   }
 
   async register(data: Partial<Customer> & { password: string }) {
-    // email/meterId/contractId collectés par le formulaire mais NON envoyés : le backend
-    // ne les persiste pas (Customer n'a que phoneNumber/displayName/password/role, voir
-    // customer.domain.Customer) — les inventer côté payload serait silencieusement ignoré
-    // par le backend, donc autant ne pas prétendre les envoyer. Signalé dans le rapport de
-    // connexion frontend/backend, pas un oubli.
     const displayName = [data.firstName, data.lastName].filter(Boolean).join(' ') || 'Client'
     // Normalisation des espaces indispensable : verify-otp est ensuite appelé avec le
     // même numéro "nettoyé" (voir pages/auth.tsx) — un mismatch d'espaces ferait échouer
     // la vérification OTP alors que le compte existe bien.
+    // meterId/contractId optionnels : le backend valide meterId contre le registre `meter`
+    // (géré par l'admin) et échoue explicitement (404/409) s'il est inconnu ou déjà associé
+    // à un autre client — jamais une association silencieuse/inventée (voir
+    // AuthService.register côté backend).
     return http.post<{ otpSent: boolean }>('/api/v1/auth/register', {
       phoneNumber: (data.phone ?? '').replace(/\s/g, ''),
       displayName,
       password: data.password,
+      email: data.email || undefined,
+      meterId: data.meterId || undefined,
+      contractId: data.contractId || undefined,
     }, false)
   }
 
@@ -388,4 +393,12 @@ export class RealApiAdapter implements ApiAdapter {
   // rien à interroger pour un statut par "service". Construire un faux statut par nom de
   // package serait une donnée inventée, pas une connexion à quelque chose de réel.
   async listServices() { await delay(300); return mockServices }
+
+  async listMeterRegistry(): Promise<MeterRegistryEntry[]> {
+    return http.get<MeterRegistryEntry[]>('/api/v1/meters/registry')
+  }
+
+  async registerMeter(meterId: string, label?: string): Promise<MeterRegistryEntry> {
+    return http.post<MeterRegistryEntry>('/api/v1/meters/registry', { meterId, label })
+  }
 }

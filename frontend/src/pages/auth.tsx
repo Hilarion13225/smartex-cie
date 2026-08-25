@@ -96,8 +96,11 @@ export function Register({ onBack }: { onBack: () => void }) {
     firstName: 'Marie',
     phone: '07 12 34 56 78',
     email: 'marie.tolo@email.com',
-    meterId: '58901234567',
-    contractId: '1234567890',
+    // Seul compteur réellement enregistré par défaut dans ce PoC (voir V8 migration) --
+    // un numéro inventé serait désormais rejeté par le backend (association réelle
+    // Client<->Compteur, voir AuthService.register), plus seulement ignoré silencieusement.
+    meterId: 'CIE-LAB-0001',
+    contractId: '',
     password: 'Test@1234',
     confirm: 'Test@1234',
   })
@@ -108,8 +111,13 @@ export function Register({ onBack }: { onBack: () => void }) {
   // Validations
   const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   const isValidPhone = (phone: string) => /^[0-9]{10,}$/.test(phone.replace(/\s/g, ''))
-  const isValidMeterId = (id: string) => /^[0-9]{11}$/.test(id.replace(/\s/g, ''))
-  const isValidContractId = (id: string) => /^[0-9]{10,}$/.test(id.replace(/\s/g, ''))
+  // Optionnels : le vrai format d'un numéro de compteur/contrat CIE n'est pas connu (pas
+  // encore qualifié avec la CIE, voir Gate 0 dans CLAUDE.md) -- pas de format inventé ici.
+  // Le backend est seul juge de la validité réelle (existence du compteur dans le registre,
+  // voir AuthService.register), pas cette validation client, purement défensive contre une
+  // saisie manifestement inutilisable.
+  const isValidMeterId = (id: string) => id.trim() === '' || /^[A-Za-z0-9-]{3,32}$/.test(id.trim())
+  const isValidContractId = (id: string) => id.trim() === '' || /^[A-Za-z0-9-]{3,32}$/.test(id.trim())
 
   const isStrongPassword = (pwd: string) => {
     if (pwd.length < 8) return false
@@ -128,8 +136,8 @@ export function Register({ onBack }: { onBack: () => void }) {
       if (!isValidEmail(form.email)) return 'Email invalide'
     }
     if (step === 1) {
-      if (!isValidMeterId(form.meterId)) return 'Numéro de compteur: 11 chiffres'
-      if (!isValidContractId(form.contractId)) return 'Numéro de contrat: 10+ chiffres'
+      if (!isValidMeterId(form.meterId)) return 'Numéro de compteur invalide'
+      if (!isValidContractId(form.contractId)) return 'Numéro de contrat invalide'
     }
     if (step === 2) {
       if (!form.password) return 'Mot de passe requis'
@@ -151,8 +159,6 @@ export function Register({ onBack }: { onBack: () => void }) {
     if (step === 2) {
       setLoading(true)
       try {
-        // email/meterId/contractId ne sont pas envoyés au backend (pas de champ
-        // correspondant sur Customer côté backend) — voir RealApiAdapter.register.
         await api.register({ ...form })
         setPendingPhone(form.phone.replace(/\s/g, ''))
         notify('Inscription réussie', 'Vérifiez votre code OTP', 'SUCCESS')
@@ -203,8 +209,13 @@ export function Register({ onBack }: { onBack: () => void }) {
           )}
           {step === 1 && (
             <>
-              {input('Numéro de compteur', 'meterId')}
-              {input('Numéro de contrat', 'contractId')}
+              {input('Numéro de compteur (optionnel)', 'meterId')}
+              {input('Numéro de contrat (optionnel)', 'contractId')}
+              <p className="text-xs text-gray-400">
+                Si renseigné, le numéro de compteur doit déjà exister dans le registre CIE —
+                sinon l'inscription échoue avec un message clair plutôt que d'associer un
+                compteur au hasard.
+              </p>
             </>
           )}
           {step === 2 && (

@@ -29,7 +29,7 @@ export function ClientDashboard() {
   // — aucune association Customer↔Meter n'existe encore, voir docs/05 §8), que la
   // coalescence nulle ne remplace pas. Rafraîchi automatiquement (voir useLiveMeter) : le
   // crédit affiché suit la consommation simulée sans que l'utilisateur recharge la page.
-  const meter = useLiveMeter(customer?.meterId || DEFAULT_METER_ID)
+  const { meter, notFound } = useLiveMeter(customer?.meterId || DEFAULT_METER_ID)
   const [showNotif, setShowNotif] = useState(true)
 
   useEffect(() => {
@@ -56,7 +56,16 @@ export function ClientDashboard() {
       )}
 
       <div className="px-5 mt-4 space-y-4">
-        {!meter ? (
+        {!meter && notFound ? (
+          <Card className="p-5 text-center">
+            <p className="text-3xl mb-2">⚠️</p>
+            <p className="font-bold text-gray-900">Compteur introuvable</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Votre compte est associé au compteur <b>{customer?.meterId}</b>, mais aucun
+              dongle n'y est encore raccordé. Contactez le support si cela persiste.
+            </p>
+          </Card>
+        ) : !meter ? (
           <>
             <Skeleton className="h-14 rounded-2xl" />
             <Skeleton className="h-32 rounded-2xl" />
@@ -142,7 +151,7 @@ export function MeterPage() {
   // `||` et non `??` : un vrai customer backend a meterId = '' (chaîne vide, pas undefined
   // — aucune association Customer↔Meter n'existe encore, voir docs/05 §8), que la
   // coalescence nulle ne remplace pas. Rafraîchi automatiquement, voir useLiveMeter.
-  const meter = useLiveMeter(customer?.meterId || DEFAULT_METER_ID)
+  const { meter, notFound } = useLiveMeter(customer?.meterId || DEFAULT_METER_ID)
 
   return (
     <div>
@@ -150,7 +159,16 @@ export function MeterPage() {
         <h1 className="text-xl font-bold text-gray-900">Mon compteur</h1>
       </div>
       <div className="px-5 mt-4 space-y-4">
-        {!meter ? (
+        {!meter && notFound ? (
+          <Card className="p-5 text-center">
+            <p className="text-3xl mb-2">⚠️</p>
+            <p className="font-bold text-gray-900">Compteur introuvable</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Votre compte est associé au compteur <b>{customer?.meterId}</b>, mais aucun
+              dongle n'y est encore raccordé. Contactez le support si cela persiste.
+            </p>
+          </Card>
+        ) : !meter ? (
           <Skeleton className="h-64 rounded-2xl" />
         ) : (
           <>

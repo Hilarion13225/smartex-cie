@@ -4,6 +4,8 @@ import ci.cie.smartprepaid.common.DomainException;
 import ci.cie.smartprepaid.customer.domain.Customer;
 import ci.cie.smartprepaid.customer.domain.CustomerRole;
 import ci.cie.smartprepaid.customer.repo.CustomerRepository;
+import ci.cie.smartprepaid.meter.domain.Meter;
+import ci.cie.smartprepaid.meter.repo.MeterRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,6 +26,7 @@ import static org.mockito.Mockito.*;
 class AuthServiceTest {
 
     private CustomerRepository customerRepository;
+    private MeterRepository meterRepository;
     private OtpService otpService;
     private JwtService jwtService;
     private PasswordEncoder passwordEncoder;
@@ -32,10 +35,11 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         customerRepository = mock(CustomerRepository.class);
+        meterRepository = mock(MeterRepository.class);
         otpService = mock(OtpService.class);
         jwtService = mock(JwtService.class);
         passwordEncoder = mock(PasswordEncoder.class);
-        authService = new AuthService(customerRepository, otpService, jwtService, passwordEncoder);
+        authService = new AuthService(customerRepository, meterRepository, otpService, jwtService, passwordEncoder);
     }
 
     @Test
@@ -43,7 +47,7 @@ class AuthServiceTest {
         when(customerRepository.findByPhoneNumber("0700000000"))
                 .thenReturn(Optional.of(new Customer("0700000000", "Jean", CustomerRole.CLIENT, null)));
 
-        assertThatThrownBy(() -> authService.register("0700000000", "Jean", "Test@1234"))
+        assertThatThrownBy(() -> authService.register("0700000000", "Jean", "Test@1234", null, null, null))
                 .isInstanceOf(DomainException.class)
                 .extracting(e -> ((DomainException) e).getCode())
                 .isEqualTo("DUPLICATE");
@@ -55,9 +59,51 @@ class AuthServiceTest {
         when(customerRepository.findByPhoneNumber("0700000000")).thenReturn(Optional.empty());
         when(passwordEncoder.encode("Test@1234")).thenReturn("hashed-password");
 
-        authService.register("0700000000", "Jean", "Test@1234");
+        authService.register("0700000000", "Jean", "Test@1234", null, null, null);
 
         verify(customerRepository).save(any(Customer.class));
+        verify(otpService).issueChallenge("0700000000");
+    }
+
+    @Test
+    void registerAvecCompteurInconnu_estRejeteSansCreerLeClient() {
+        when(customerRepository.findByPhoneNumber("0700000000")).thenReturn(Optional.empty());
+        when(meterRepository.findById("METER-X")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.register("0700000000", "Jean", null, null, "METER-X", "CONTRAT-1"))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("NOT_FOUND");
+        verify(customerRepository, never()).save(any());
+        verify(otpService, never()).issueChallenge(any());
+    }
+
+    @Test
+    void registerAvecCompteurDejaAssocieAUnAutreClient_estRejete() {
+        when(customerRepository.findByPhoneNumber("0700000000")).thenReturn(Optional.empty());
+        when(meterRepository.findById("CIE-LAB-0001")).thenReturn(Optional.of(new Meter("CIE-LAB-0001", "Labo")));
+        when(customerRepository.findByMeterId("CIE-LAB-0001"))
+                .thenReturn(Optional.of(new Customer("0788888888", "Autre", CustomerRole.CLIENT, null)));
+
+        assertThatThrownBy(() -> authService.register("0700000000", "Jean", null, null, "CIE-LAB-0001", null))
+                .isInstanceOf(DomainException.class)
+                .extracting(e -> ((DomainException) e).getCode())
+                .isEqualTo("DUPLICATE");
+        verify(customerRepository, never()).save(any());
+    }
+
+    @Test
+    void registerAvecCompteurValideEtLibre_lieLeCompteurAuNouveauClient() {
+        when(customerRepository.findByPhoneNumber("0700000000")).thenReturn(Optional.empty());
+        when(meterRepository.findById("CIE-LAB-0001")).thenReturn(Optional.of(new Meter("CIE-LAB-0001", "Labo")));
+        when(customerRepository.findByMeterId("CIE-LAB-0001")).thenReturn(Optional.empty());
+
+        authService.register("0700000000", "Jean", null, "jean@example.com", "CIE-LAB-0001", "CONTRAT-1");
+
+        verify(customerRepository).save(argThat(c ->
+                "CIE-LAB-0001".equals(c.getMeterId())
+                        && "CONTRAT-1".equals(c.getContractId())
+                        && "jean@example.com".equals(c.getEmail())));
         verify(otpService).issueChallenge("0700000000");
     }
 

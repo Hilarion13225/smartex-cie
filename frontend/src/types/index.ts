@@ -191,6 +191,16 @@ export interface Device {
   lastSeen: string
 }
 
+// Registre des compteurs connus de la CIE (admin), base de l'association Client<->Compteur
+// réelle à l'inscription -- distinct de Device (un compteur peut exister sans dongle).
+export interface MeterRegistryEntry {
+  meterId: string
+  label: string | null
+  createdAt: string
+  hasDevice: boolean
+  claimedByCustomerId: string | null
+}
+
 export interface ServiceHealth {
   name: string
   status: 'UP' | 'DEGRADED' | 'DOWN'

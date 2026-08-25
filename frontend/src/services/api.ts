@@ -10,7 +10,7 @@
 import type {
   Customer, Meter, Token, Transaction, Alert, Incident, AuditEvent,
   DsiUser, Device, ServiceHealth, ConsumptionPoint, PaymentProvider, RechargeStatus,
-  RechargeDetail,
+  RechargeDetail, MeterRegistryEntry,
 } from '../types'
 import {
   mockCustomers, mockMeters, mockTokens, mockTransactions, mockAlerts,
@@ -19,6 +19,13 @@ import {
 import { RealApiAdapter } from './realApi'
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+// Registre de démo mutable (mode mock uniquement) : reflète les compteurs déjà
+// "enregistrés" par l'admin dans la session en cours (voir MockApiAdapter.registerMeter).
+let mockMeterRegistry: MeterRegistryEntry[] = [
+  { meterId: 'MTR-458921', label: 'Compteur de démo', createdAt: new Date().toISOString(),
+    hasDevice: true, claimedByCustomerId: null },
+]
 
 export interface ApiAdapter {
   // POST /api/v1/auth/login — backend OTP-only (voir CustomerRole/AuthService) : pas de
@@ -77,6 +84,11 @@ export interface ApiAdapter {
   // Pas d'équivalent backend : ce PoC est un seul déployable Spring Boot, pas les 6+5
   // microservices de l'architecture V2 — rien à interroger par "service", reste mock.
   listServices(): Promise<ServiceHealth[]>
+  // GET/POST /api/v1/meters/registry (réservé CIE_OPERATOR/CIE_ADMIN/DSI_ADMIN) : registre
+  // des compteurs connus de la CIE, base de l'association Client<->Compteur réelle vérifiée
+  // à l'inscription (voir AuthService.register côté backend).
+  listMeterRegistry(): Promise<MeterRegistryEntry[]>
+  registerMeter(meterId: string, label?: string): Promise<MeterRegistryEntry>
 }
 
 class MockApiAdapter implements ApiAdapter {
@@ -137,6 +149,19 @@ class MockApiAdapter implements ApiAdapter {
   async listUsers() { await delay(500); return mockUsers }
   async listDevices() { await delay(550); return mockDevices }
   async listServices() { await delay(450); return mockServices }
+  async listMeterRegistry() { await delay(400); return mockMeterRegistry }
+  async registerMeter(meterId: string, label?: string) {
+    await delay(400)
+    if (mockMeterRegistry.some((m) => m.meterId === meterId)) {
+      throw new Error(`Ce compteur est déjà enregistré: ${meterId}`)
+    }
+    const entry: MeterRegistryEntry = {
+      meterId, label: label ?? null, createdAt: new Date().toISOString(),
+      hasDevice: false, claimedByCustomerId: null,
+    }
+    mockMeterRegistry = [entry, ...mockMeterRegistry]
+    return entry
+  }
 }
 
 // VITE_USE_MOCK_API : "false" bascule sur RealApiAdapter (vrais appels backend).

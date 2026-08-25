@@ -18,7 +18,7 @@ import {
   CieDashboard, CieFraude, CieIncidents, CieMeterDetail, CieMeters,
   CieParametres, CieQualite, CieRapports, CieRecharges, CieTelecom,
 } from './pages/cie'
-import { AdminAudit, AdminDevices, AdminRechargeLookup, AdminServices, AdminTokens, AdminUsers } from './pages/admin'
+import { AdminAudit, AdminDevices, AdminMeters, AdminRechargeLookup, AdminServices, AdminTokens, AdminUsers } from './pages/admin'
 
 const cieNav: PortalNavItem[] = [
   { to: '/cie', label: 'Tableau de bord', icon: '📊', end: true },
@@ -34,6 +34,7 @@ const cieNav: PortalNavItem[] = [
 
 const adminNav: PortalNavItem[] = [
   { to: '/admin', label: 'Utilisateurs & rôles', icon: '👥', end: true },
+  { to: '/admin/compteurs', label: 'Registre des compteurs', icon: '⚡' },
   { to: '/admin/devices', label: 'Devices & credentials', icon: '🔌' },
   { to: '/admin/tokens', label: 'Tokens', icon: '🎟️' },
   { to: '/admin/audit', label: 'Audit', icon: '🧾' },
@@ -89,6 +90,7 @@ function AppRoutes() {
         {/* Espace Admin (technique) */}
         <Route path="/admin" element={<PortalLayout title="Administration" items={adminNav} accent="CIE Admin" />}>
           <Route index element={<AdminUsers />} />
+          <Route path="compteurs" element={<AdminMeters />} />
           <Route path="devices" element={<AdminDevices />} />
           <Route path="tokens" element={<AdminTokens />} />
           <Route path="audit" element={<div className="space-y-4"><AdminRechargeLookup /><AdminAudit /></div>} />
