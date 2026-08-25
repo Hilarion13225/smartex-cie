@@ -277,7 +277,7 @@ cd simulators/payment-simulator && pip install -r requirements.txt pytest && pyt
 cd simulators/mock-dongle && pip install -r requirements.txt pytest && pytest -v
 ```
 
-## Ce qui est fait vs. ce qui reste (statut au 24/08/2026)
+## Ce qui est fait vs. ce qui reste (statut au 25/08/2026)
 
 | Élément | Statut |
 |---|---|
@@ -290,22 +290,17 @@ cd simulators/mock-dongle && pip install -r requirements.txt pytest && pytest -v
 | Migrations DB (schéma + seed) | ✅ Code complet |
 | payment-simulator (Python) | ✅ Testé (4/4 tests passent) |
 | mock-dongle (Python, MQTT + HTTP) | ✅ Testé (3/3 tests passent) |
-| docker-compose (postgres, mosquitto, backend, simulateurs) | ✅ Testé en intégration (T01→T06/T15 + C02, avec mTLS actif) |
 | Backend Java : compilation/tests réels | ✅ `mvn test` exécuté, build Docker validé |
-| Sécurité: mTLS, ACL MQTT par device (certificats de labo) | ✅ Implémenté et testé (C02) — PKI/HSM réels restent à faire avant matériel CIE |
-| Endpoint de recette pour forcer un token invalide (T05) | ✅ `forceInvalidToken` sur `POST /api/v1/recharges` |
-| T07 (perte réseau MQTT) | ✅ Testé (`docker compose stop/start mosquitto`) + `CommandExpiryWatcher` ajouté (sans lui, une commande sans ACK restait bloquée indéfiniment) |
-| T08 (redémarrage dongle) | ✅ Testé (`docker compose restart mock-dongle`) — OK par construction ; limite connue : `MeterState` du mock non persistant (voir §Résilience) |
-| T09 (coupure/redémarrage backend) | ✅ Testé (`docker compose stop/start backend`) — OK par construction (Flyway, intégrité DB, QoS1) ; nuance d'ordonnancement documentée (§Résilience) |
+| Sécurité: mTLS, ACL MQTT par device (certificats de labo) | ✅ Implémenté (PKI de laboratoire — PKI CIE réelle restant à faire, voir dossier de recette) |
 | incident-service, rules-engine-service (V2) | ⛔ Hors scope PoC actuel |
+
+> **Statut détaillé des tests (T01–T15, C01–C07), anomalies corrigées, critères
+> d'acceptation Gate 1 et recommandation GO/NO-GO pour le Gate 2** : voir le
+> [dossier de recette Gate 1](docs/04_dossier-recette-gate1.md) — ce document fait foi pour
+> tout ce qui concerne les résultats de tests ; ce tableau ne couvre que l'avancement du code.
 
 ## Prochaine étape recommandée
 
-1. Qualifier le compteur/protocole réel avec la CIE (Gate 0) avant tout raccordement physique.
-2. Remplacer la PKI de laboratoire auto-signée par la PKI approuvée par la Cybersécurité
-   CIE (mTLS + ACL par device restent la même mécanique, seuls les certificats changent).
-3. Étendre les tests de sécurité aux autres cas de `§18_CyberTests` (C01, C03-C07) sur le
-   modèle de `infra/mosquitto/test-acl-c02.sh`.
-4. Avant le banc réel : ajouter une persistance de l'état compteur/dongle (T08) et lever
-   la course décrite en §Résilience/T09 entre redélivrance MQTT et `CommandExpiryWatcher`
-   au démarrage (ex. délai initial du job après la reprise de session MQTT).
+Voir la section 6 ("Recommandation GO/NO-GO") du
+[dossier de recette Gate 1](docs/04_dossier-recette-gate1.md) pour la liste à jour des
+conditions préalables avant le Gate 2 (banc réel CIE).
