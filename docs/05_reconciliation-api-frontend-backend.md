@@ -90,15 +90,30 @@ commandes en cas de retry — docs/03 semble supposer un statut de commande uniq
 ce qui ne tient pas dès qu'on modélise les retries, cf. `§14_TestMatrix T07`).
 
 **Contrat proposé** :
-- Ajouter `paymentStatus` à `RechargeDetailResponse` (donnée déjà en base, juste jamais
-  jointe/exposée) — changement backend simple mais **à valider**, car il expose l'ID/statut
-  du paiement à quiconque connaît un `rechargeId` : question RBAC à trancher avec l'auth.
+- ~~Ajouter `paymentStatus` à `RechargeDetailResponse`~~ — **fait** : `paymentStatus` est
+  désormais résolu via `Payment` (chargé par `recharge.getPaymentId()`) et exposé dans
+  `RechargeDetailResponse`. Vaut `null` (pas d'erreur) quand `paymentId` ne correspond à
+  aucun `Payment` réel — cas des recharges de recette créées via l'endpoint manuel sans
+  paiement préalable (T05/T06). La question RBAC (qui peut voir le statut de paiement d'une
+  recharge) reste à trancher une fois l'auth en place (§8) — pour l'instant, l'endpoint
+  reste ouvert comme le reste du PoC.
 - Remplacer le `commandStatus` singulier de docs/03 par le `commands[]` déjà présent côté
   backend (plus riche et déjà correct pour représenter les retries) — proposer cette
   correction *à* docs/03 plutôt que d'appauvrir le backend pour coller à un contrat qui ne
   gère pas le retry.
-- Ajouter `paymentId` et `tokenHash` (jamais le token en clair, cf. §Sécurité token
-  ci-dessous) si le frontend a besoin de tracer `Transaction.paymentId`/`Transaction.tokenId`.
+- Ajouter `paymentId` si le frontend a besoin de tracer `Transaction.paymentId` — **ne pas**
+  ajouter `tokenHash` ni le token : voir note de sécurité ci-dessous.
+
+**✅ Confirmation sécurité token — déjà conforme, aucun changement requis** : ni
+`RechargeResponse` ni `RechargeDetailResponse` n'exposent le token, en clair ou hashé.
+`Recharge` (entité JPA) ne persiste que `tokenHash` (`recharge.token_hash` en base, via
+`TokenHasher.sha256(...)`) — le token en clair (`tokenPlaintext`) n'existe jamais que le
+temps d'un appel MQTT (`CommandPublisher`) et n'est jamais écrit en base ni renvoyé par
+aucun DTO. Vérifié en relisant `Recharge.java`, `RechargeResponse.java` et
+`RechargeDetailResponse.java` : aucun des deux DTO ne déclare de champ `token`/`tokenHash`/
+`tokenValue`. Conforme à la décision validée (le client ne doit jamais voir le token en
+clair) et à `CLAUDE.md` règle #3 / test C05, sans qu'aucune modification n'ait été
+nécessaire ici.
 
 ---
 

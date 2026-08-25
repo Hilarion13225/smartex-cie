@@ -1,5 +1,6 @@
 package ci.cie.smartprepaid.recharge.api;
 
+import ci.cie.smartprepaid.payment.repo.PaymentRepository;
 import ci.cie.smartprepaid.recharge.dto.RechargeDetailResponse;
 import ci.cie.smartprepaid.recharge.dto.RechargeRequest;
 import ci.cie.smartprepaid.recharge.dto.RechargeResponse;
@@ -19,9 +20,11 @@ import java.util.UUID;
 public class RechargeController {
 
     private final RechargeOrchestrator orchestrator;
+    private final PaymentRepository paymentRepository;
 
-    public RechargeController(RechargeOrchestrator orchestrator) {
+    public RechargeController(RechargeOrchestrator orchestrator, PaymentRepository paymentRepository) {
         this.orchestrator = orchestrator;
+        this.paymentRepository = paymentRepository;
     }
 
     @PostMapping("/recharges")
@@ -37,7 +40,13 @@ public class RechargeController {
     public RechargeDetailResponse get(@PathVariable UUID id) {
         var recharge = orchestrator.findRechargeOrThrow(id);
         var commands = orchestrator.findCommandsForRecharge(id);
-        return RechargeDetailResponse.from(recharge, commands);
+        // paymentId peut ne correspondre à aucun Payment réel pour une recharge de
+        // recette créée via l'endpoint manuel sans paiement préalable (voir T05/T06
+        // du README) : paymentStatus reste alors null plutôt que de lever une erreur.
+        String paymentStatus = paymentRepository.findById(recharge.getPaymentId())
+                .map(p -> p.getStatus().name())
+                .orElse(null);
+        return RechargeDetailResponse.from(recharge, commands, paymentStatus);
     }
 
     @PostMapping("/commands/{id}/retry")
