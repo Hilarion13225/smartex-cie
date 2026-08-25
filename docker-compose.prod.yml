@@ -17,16 +17,16 @@
 
 services:
   postgres:
-    ports: []
+    ports: !reset []
 
   mosquitto:
-    ports: []
+    ports: !reset []
 
   mock-dongle:
-    ports: []
+    ports: !reset []
 
   payment-simulator:
-    ports: []
+    ports: !reset []
 
   backend:
     environment:
