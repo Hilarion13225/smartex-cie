@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, DEFAULT_METER_ID, useMock } from '../../services/api'
+import { DEFAULT_METER_ID, useMock } from '../../services/api'
+import { useLiveMeter } from '../../hooks/useLiveMeter'
 import { useAppStore } from '../../stores/app'
-import type { Meter } from '../../types'
 import { fmtFcfa, fmtKwh } from '../../types'
 import { Badge, Card, CreditStatusBadge, MeterStatusBadge, Skeleton } from '../../components/ui'
 
@@ -25,17 +25,17 @@ export function ClientDashboard() {
   const customer = useAppStore((s) => s.customer)
   const alerts = useAppStore((s) => s.alerts)
   const lastPaymentAmount = useAppStore((s) => s.lastPaymentAmount)
-  const [meter, setMeter] = useState<Meter | null>(null)
+  // `||` et non `??` : un vrai customer backend a meterId = '' (chaîne vide, pas undefined
+  // — aucune association Customer↔Meter n'existe encore, voir docs/05 §8), que la
+  // coalescence nulle ne remplace pas. Rafraîchi automatiquement (voir useLiveMeter) : le
+  // crédit affiché suit la consommation simulée sans que l'utilisateur recharge la page.
+  const meter = useLiveMeter(customer?.meterId || DEFAULT_METER_ID)
   const [showNotif, setShowNotif] = useState(true)
 
   useEffect(() => {
-    // `||` et non `??` : un vrai customer backend a meterId = '' (chaîne vide, pas
-    // undefined — aucune association Customer↔Meter n'existe encore, voir docs/05 §8),
-    // que la coalescence nulle ne remplace pas.
-    api.getMeter(customer?.meterId || DEFAULT_METER_ID).then(setMeter)
     const notifTimer = setTimeout(() => setShowNotif(false), 5000)
     return () => clearTimeout(notifTimer)
-  }, [customer])
+  }, [])
 
   const unread = alerts.filter((a) => !a.read)
   const lastAlert = unread[0] ?? alerts[0]
@@ -79,7 +79,13 @@ export function ClientDashboard() {
                 plus double-compterait. */}
             <div className="rounded-2xl bg-gradient-to-br from-orange-500 via-orange-400 to-green-500 text-white p-5 flex items-center justify-between shadow-lg shadow-orange-500/30 animate-slide-up">
               <div>
-                <p className="text-xs text-white font-semibold">⚡ Crédit restant</p>
+                <p className="text-xs text-white font-semibold flex items-center gap-1.5">
+                  ⚡ Crédit restant
+                  <span className="inline-flex items-center gap-1 text-[9px] font-normal opacity-80" title="Mis à jour automatiquement">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                    en direct
+                  </span>
+                </p>
                 <p className="text-3xl font-extrabold mt-1">{fmtFcfa(meter.creditFcfa + (useMock ? lastPaymentAmount : 0))}</p>
                 <p className="text-sm text-white mt-1">≈ {fmtKwh((meter.creditFcfa + (useMock ? lastPaymentAmount : 0)) / 1000 * 1.25)}</p>
               </div>
@@ -133,14 +139,10 @@ export function ClientDashboard() {
 export function MeterPage() {
   const navigate = useNavigate()
   const customer = useAppStore((s) => s.customer)
-  const [meter, setMeter] = useState<Meter | null>(null)
-
-  useEffect(() => {
-    {/* `||` et non `??` : un vrai customer backend a meterId = '' (chaîne vide, pas
-        undefined — aucune association Customer↔Meter n'existe encore, voir docs/05 §8),
-        que la coalescence nulle ne remplace pas. */}
-    api.getMeter(customer?.meterId || DEFAULT_METER_ID).then(setMeter)
-  }, [customer])
+  // `||` et non `??` : un vrai customer backend a meterId = '' (chaîne vide, pas undefined
+  // — aucune association Customer↔Meter n'existe encore, voir docs/05 §8), que la
+  // coalescence nulle ne remplace pas. Rafraîchi automatiquement, voir useLiveMeter.
+  const meter = useLiveMeter(customer?.meterId || DEFAULT_METER_ID)
 
   return (
     <div>
@@ -165,7 +167,13 @@ export function MeterPage() {
                 <div><p className="text-[11px] text-gray-500">Tension</p><p className="font-semibold text-orange-700">{meter.voltage} V</p></div>
                 <div><p className="text-[11px] text-gray-500">Courant</p><p className="font-semibold text-orange-700">{meter.current} A</p></div>
                 <div><p className="text-[11px] text-gray-500">Conso</p><p className="font-semibold text-green-700">{fmtKwh(meter.consumptionTodayKwh)}</p></div>
-                <div><p className="text-[11px] text-gray-500">Crédit</p><p className="font-semibold text-green-700">{fmtFcfa(meter.creditFcfa)}</p></div>
+                <div>
+                  <p className="text-[11px] text-gray-500 flex items-center gap-1">
+                    Crédit
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" title="Mis à jour automatiquement" />
+                  </p>
+                  <p className="font-semibold text-green-700">{fmtFcfa(meter.creditFcfa)}</p>
+                </div>
                 <div><p className="text-[11px] text-gray-500">Alertes</p><p className="font-semibold text-red-600">{meter.alertCount}</p></div>
               </div>
             </div>
