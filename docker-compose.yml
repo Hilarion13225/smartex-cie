@@ -43,6 +43,10 @@ services:
       MQTT_CLIENT_KEY_PATH: /certs/backend-gateway.key
       MOCK_DONGLE_BASE_URL: http://mock-dongle:9001
       SERVER_PORT: 8080
+      # Défaut 60s (voir application.yml) ; surchargeable pour les tests de recette T13/C04
+      # (fenêtre de validité courte) sans toucher au code, ex:
+      # MQTT_COMMAND_TTL_SECONDS=2 docker compose up -d backend
+      MQTT_COMMAND_TTL_SECONDS: "${MQTT_COMMAND_TTL_SECONDS:-60}"
     ports:
       - "8080:8080"
     volumes:

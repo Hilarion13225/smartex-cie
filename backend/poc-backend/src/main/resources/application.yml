@@ -24,7 +24,7 @@ mqtt:
   client-id: poc-backend-gateway
   username: ${MQTT_USERNAME:}
   password: ${MQTT_PASSWORD:}
-  command-ttl-seconds: 60
+  command-ttl-seconds: ${MQTT_COMMAND_TTL_SECONDS:60}
   qos: 1
   # mTLS (§12_Securite): utilisés seulement si broker-url commence par ssl://.
   ca-cert-path: ${MQTT_CA_CERT_PATH:}
