@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: cie_smart_prepaid_poc
       POSTGRES_USER: poc_user
-      POSTGRES_PASSWORD: poc_password
+      POSTGRES_PASSWORD: "${DB_PASSWORD:-poc_password}"
     ports:
       - "5432:5432"
     volumes:
@@ -36,7 +36,10 @@ services:
       DB_PORT: 5432
       DB_NAME: cie_smart_prepaid_poc
       DB_USER: poc_user
-      DB_PASSWORD: poc_password
+      DB_PASSWORD: "${DB_PASSWORD:-poc_password}"
+      # Défaut = secret de labo explicitement marqué "jamais en production" (voir
+      # application.yml) ; surchargeable ici sans toucher au code, ex. déploiement démo.
+      JWT_SECRET: "${JWT_SECRET:-cie-lab-poc-jwt-secret-do-not-use-in-production-change-me}"
       MQTT_BROKER_URL: ssl://mosquitto:8883
       MQTT_CA_CERT_PATH: /certs/ca.crt
       MQTT_CLIENT_CERT_PATH: /certs/backend-gateway.crt

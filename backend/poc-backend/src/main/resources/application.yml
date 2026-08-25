@@ -57,6 +57,12 @@ jwt:
   secret: ${JWT_SECRET:cie-lab-poc-jwt-secret-do-not-use-in-production-change-me}
   expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
 
+# CorsConfig (profil dev uniquement) : origine(s) publique(s) supplémentaire(s) autorisée(s)
+# en plus de localhost/RFC1918 (voir docker-compose.prod.yml, déploiement de démo VPS).
+app:
+  cors:
+    extra-origins: ${EXTRA_CORS_ORIGINS:}
+
 management:
   endpoints:
     web:

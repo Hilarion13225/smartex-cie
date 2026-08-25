@@ -1,5 +1,6 @@
 package ci.cie.smartprepaid.common;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -7,6 +8,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -33,15 +35,28 @@ import java.util.List;
 @Profile("dev")
 public class CorsConfig {
 
+    // Origine(s) supplémentaire(s) à autoriser (ex: IP publique d'un VPS de démo servant
+    // le frontend buildé sur le port 80, voir docker-compose.prod.yml/EXTRA_CORS_ORIGINS)
+    // -- vide par défaut, donc sans effet sur le poste de dev local. Séparées par virgule.
+    @Value("${app.cors.extra-origins:}")
+    private String extraOrigins;
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of(
+        List<String> patterns = new ArrayList<>(List.of(
                 "http://localhost:5173",
                 "http://192.168.*.*:5173",
                 "http://10.*.*.*:5173",
                 "http://172.*.*.*:5173"
         ));
+        if (!extraOrigins.isBlank()) {
+            for (String origin : extraOrigins.split(",")) {
+                if (!origin.isBlank()) patterns.add(origin.trim());
+            }
+        }
+
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOriginPatterns(patterns);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setExposedHeaders(List.of(CorrelationIdFilter.HEADER));

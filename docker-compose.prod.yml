@@ -1,0 +1,44 @@
+# Override de déploiement (démo VPS, IP brute -- voir README §Déploiement démo).
+# Usage : docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+#
+# Ne modifie PAS docker-compose.yml (workflow de dev local inchangé) : ajoute le service
+# frontend (absent en dev, où l'on utilise `npm run dev`) et referme sur 127.0.0.1 les
+# ports qui n'ont aucune raison d'être joignables depuis internet (postgres, mosquitto,
+# mock-dongle, payment-simulator -- seuls consommés en interne par les autres conteneurs).
+# Nécessaire même si le pare-feu (ufw) les bloque déjà : Docker manipule iptables
+# directement pour ses ports publiés, ce qui contourne ufw par défaut -- ne pas compter
+# sur le pare-feu seul pour ça, voir https://github.com/chaifeng/ufw-docker.
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  mosquitto:
+    ports:
+      - "127.0.0.1:8883:8883"
+
+  mock-dongle:
+    ports:
+      - "127.0.0.1:9001:9001"
+
+  payment-simulator:
+    ports:
+      - "127.0.0.1:9000:9000"
+
+  backend:
+    environment:
+      # Autorise le frontend statique servi sur ce VPS (port 80) à appeler l'API --
+      # voir CorsConfig.java, en plus des motifs localhost/RFC1918 déjà autorisés en dev.
+      EXTRA_CORS_ORIGINS: "http://${DEPLOY_PUBLIC_IP:-87.106.7.58}"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: "http://${DEPLOY_PUBLIC_IP:-87.106.7.58}:8080"
+        VITE_USE_MOCK_API: "false"
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
