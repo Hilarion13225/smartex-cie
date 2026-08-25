@@ -55,15 +55,31 @@ export function TransactionsPage() {
   // juste avant la fin de cette réhydratation reste bloqué sur une liste vide pour de bon.
   const customer = useAppStore((s) => s.customer)
 
+  // Polling (pas de push serveur->client dans ce PoC, meme approche que useLiveMeter) :
+  // sans ca, une recharge qui progresse en arriere-plan (COMMAND_SENT -> CREDIT_APPLIED)
+  // ne se reflete jamais ici tant que l'utilisateur ne recharge pas la page a la main.
+  // setTimeout enchaine (pas setInterval) pour ne jamais empiler des requetes si une
+  // reponse tarde.
   useEffect(() => {
-    api.listTransactions().then((apiTxs) => {
-      // Combine API transactions with store transactions (store first for recency)
-      const combined = [
-        ...storeTransactions.map(mapStoreTransaction),
-        ...apiTxs,
-      ]
-      setTxs(combined)
-    })
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const tick = () => {
+      api.listTransactions()
+        .then((apiTxs) => {
+          if (cancelled) return
+          // Combine API transactions with store transactions (store first for recency)
+          setTxs([...storeTransactions.map(mapStoreTransaction), ...apiTxs])
+        })
+        .catch(() => { /* transitoire (reseau/serveur) -- le prochain tick se rattrapera */ })
+        .finally(() => { if (!cancelled) timer = setTimeout(tick, 5000) })
+    }
+    tick()
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
   }, [storeTransactions, customer])
 
   const filtered = useMemo(() => (txs ?? []).filter((t) =>
@@ -72,7 +88,13 @@ export function TransactionsPage() {
 
   return (
     <div>
-      <div className="px-5 pt-5"><h1 className="text-xl font-bold text-gray-900">Transactions</h1></div>
+      <div className="px-5 pt-5 flex items-center gap-2">
+        <h1 className="text-xl font-bold text-gray-900">Transactions</h1>
+        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-400" title="Mis à jour automatiquement">
+          <span className="w-1.5 h-1.5 rounded-full bg-cie-500 animate-pulse" />
+          en direct
+        </span>
+      </div>
       <div className="px-5 mt-3 flex gap-2 overflow-x-auto pb-1">
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-xs bg-white border border-gray-200 rounded-full px-3 py-1.5">
           <option value="TOUS">Statut : tous</option>
