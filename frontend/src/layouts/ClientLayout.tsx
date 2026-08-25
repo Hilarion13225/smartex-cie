@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { Toasts } from '../components/ui'
 import { api } from '../services/api'
 import { useAppStore } from '../stores/app'
 
@@ -33,7 +32,6 @@ export default function ClientLayout() {
   }, [token, customer, setCustomer])
   return (
     <div className="min-h-full max-w-md mx-auto bg-[#f6f8fa] relative pb-20">
-      <Toasts />
       <header className="sticky top-0 z-20 bg-white border-b-2 border-orange-400 px-4 py-3 flex items-center justify-between">
         <img src="/logos/cie-logo.jpg" alt="CIE" className="h-8 object-contain" />
         <NavLink

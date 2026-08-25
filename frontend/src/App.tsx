@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-route
 import ClientLayout from './layouts/ClientLayout'
 import PortalLayout from './layouts/PortalLayout'
 import type { PortalNavItem } from './layouts/PortalLayout'
+import { Toasts } from './components/ui'
 import { Otp, Register, Welcome } from './pages/auth'
 import { ClientDashboard, MeterPage } from './pages/client/dashboard'
 import { ConsumptionPage } from './pages/client/consumption'
@@ -102,6 +103,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
+      {/* Global (pas dans ClientLayout/PortalLayout) : les pages d'auth (Welcome/Register/
+          Otp) sont hors de ces deux layouts et n'affichaient donc jamais leurs notify()
+          (erreur de connexion/inscription/OTP) -- l'utilisateur ne voyait rien se passer
+          au clic. Retiré des deux layouts pour ne pas dupliquer l'affichage. */}
+      <Toasts />
       <AppRoutes />
     </BrowserRouter>
   )

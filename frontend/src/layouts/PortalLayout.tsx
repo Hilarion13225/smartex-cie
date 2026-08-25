@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { Toasts } from '../components/ui'
 
 export interface PortalNavItem { to: string; label: string; icon: string; end?: boolean }
 
@@ -9,8 +8,6 @@ export default function PortalLayout({ title, items, accent = 'CIE' }: { title: 
 
   return (
     <div className="min-h-full flex flex-col lg:flex-row">
-      <Toasts />
-
       {/* Sidebar - Hidden on mobile, visible on lg+ */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-60 bg-navy-900 text-gray-300 flex flex-col transition-transform lg:static lg:translate-x-0 lg:z-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="px-5 py-5 flex items-center justify-between border-b border-white/10">
