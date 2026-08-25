@@ -12,6 +12,13 @@ import {
   RechargeStatusBadge, SeverityDot, Skeleton,
 } from '../components/ui'
 
+const providerLogo: Record<string, string> = {
+  WAVE: '/logos/wave-logo.jpg',
+  ORANGE_MONEY: '/logos/orangemoney-logo.jpg',
+  MTN_MONEY: '/logos/mtn-logo.jpg',
+  MOOV_MONEY: '/logos/moov-logo.jpg',
+}
+
 export function CieDashboard() {
   const [incidents, setIncidents] = useState<Incident[] | null>(null)
   const [meters, setMeters] = useState<Meter[] | null>(null)
@@ -28,15 +35,15 @@ export function CieDashboard() {
   const rechargesDay = mockConsumption.jour.map((p, i) => ({ label: p.label, value: 200 + Math.round(p.kwh * 180) + i * 40 }))
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Parc total" value={mockKpis.parcTotal.toLocaleString('fr-FR')} sub="+2,5% vs hier" subColor="text-cie-600" />
         <KpiCard label="Compteurs en ligne" value={mockKpis.online.toLocaleString('fr-FR')} sub="87,6%" subColor="text-cie-600" />
         <KpiCard label="Compteurs offline" value={mockKpis.offline.toLocaleString('fr-FR')} sub="12,4%" subColor="text-red-500" />
         <KpiCard label="Alertes critiques" value={mockKpis.criticalAlerts.toString()} sub="+15 vs hier" subColor="text-red-500" />
       </div>
 
-      <div className="grid xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Card className="p-5">
           <p className="text-xs text-gray-500">Recharges aujourd’hui</p>
           <p className="text-3xl font-extrabold mt-1">{mockKpis.rechargesToday.toLocaleString('fr-FR')}</p>
@@ -83,11 +90,11 @@ export function CieDashboard() {
         </Card>
       </div>
 
-      <div className="grid xl:grid-cols-2 gap-4">
-        <Card className="p-5">
-          <div className="flex items-center justify-between mb-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Card className="p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
             <p className="font-semibold text-sm">Incidents critiques</p>
-            <Link to="/cie/incidents" className="text-xs text-cie-600 font-semibold">Voir tous les incidents</Link>
+            <Link to="/cie/incidents" className="text-xs text-cie-600 font-semibold whitespace-nowrap">Voir tous les incidents</Link>
           </div>
           {!incidents ? <Skeleton className="h-32" /> : (
             <div className="space-y-3">
@@ -193,13 +200,13 @@ export function CieMeterDetail() {
         <h2 className="text-lg font-bold">{meter.meterId}</h2>
         <MeterStatusBadge status={meter.status} />
       </div>
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Crédit" value={fmtFcfa(meter.creditFcfa)} sub={`≈ ${fmtKwh(meter.creditKwh)}`} />
         <KpiCard label="Conso aujourd’hui" value={fmtKwh(meter.consumptionTodayKwh)} />
         <KpiCard label="Tension" value={`${meter.voltage} V`} sub={`Courant : ${meter.current} A`} />
         <KpiCard label="Dernier heartbeat" value={new Date(meter.lastHeartbeat).toLocaleTimeString('fr-FR')} sub={new Date(meter.lastHeartbeat).toLocaleDateString('fr-FR')} />
       </div>
-      <div className="grid xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Card className="p-5 text-sm space-y-2.5">
           <p className="font-semibold mb-2">Identité</p>
           <div className="flex justify-between"><span className="text-gray-400">Client</span><b>{meter.customerId}</b></div>
@@ -233,7 +240,7 @@ export function CieRecharges() {
   useEffect(() => { api.listTransactions().then(setTxs) }, [])
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Taux de succès paiement" value={`${mockKpis.paymentSuccessRate}%`} />
         <KpiCard label="Taux de succès recharge" value={`${mockKpis.rechargeSuccessRate}%`} />
         <KpiCard label="Temps moyen de recharge" value={`${mockKpis.avgRechargeTimeSec}s`} />
@@ -252,7 +259,12 @@ export function CieRecharges() {
                 <tr key={t.transactionId} className="border-b border-gray-50 hover:bg-gray-50/50">
                   <td className="px-4 py-3 font-semibold text-cie-700">{t.transactionId}</td>
                   <td>{t.meterId}</td><td>{t.customerId}</td>
-                  <td>{t.provider.replace('_', ' ')}</td>
+                  <td>
+                    <div className="flex items-center gap-2">
+                      <img src={providerLogo[t.provider] || '/logos/wave-logo.jpg'} alt={t.provider} className="w-6 h-6 object-contain" />
+                      <span className="text-xs">{t.provider.replace('_', ' ')}</span>
+                    </div>
+                  </td>
                   <td className="font-semibold">{fmtFcfa(t.amount)}</td>
                   <td><RechargeStatusBadge status={t.status} /></td>
                   <td className="text-xs text-gray-500">{new Date(t.createdAt).toLocaleString('fr-FR')}</td>
@@ -314,7 +326,7 @@ export function CieSimplePanel({ title, rows }: { title: string; rows: [string, 
 
 export function CieTelecom() {
   return (
-    <div className="grid xl:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       <CieSimplePanel title="Réseau & connectivité" rows={[
         ['Liaisons MQTT actives', '112 589', 'text-cie-600'],
         ['Latence moyenne broker', '84 ms', ''],
@@ -334,7 +346,7 @@ export function CieTelecom() {
 
 export function CieFraude() {
   return (
-    <div className="grid xl:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       <CieSimplePanel title="Fraude / anomalies" rows={[
         ['Suspicions de bypass', '17', 'text-red-500'],
         ['Consommation sans crédit', '9', 'text-red-500'],
@@ -354,7 +366,7 @@ export function CieFraude() {
 
 export function CieQualite() {
   return (
-    <div className="grid xl:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       <CieSimplePanel title="Qualité des données" rows={[
         ['Télémetries valides', '99,2%', 'text-cie-600'],
         ['Valeurs manquantes (24h)', '0,6%', ''],
@@ -396,7 +408,7 @@ export function CieRapports() {
 
 export function CieParametres() {
   return (
-    <div className="grid xl:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       <CieSimplePanel title="Seuils d’alerte" rows={[
         ['Crédit faible', '< 10 000 FCFA', ''],
         ['Crédit critique', '< 2 000 FCFA', ''],

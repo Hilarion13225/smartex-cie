@@ -26,14 +26,44 @@ export const mockMeters: Meter[] = [
 ]
 
 const providers = ['WAVE', 'ORANGE_MONEY', 'MTN_MONEY', 'MOOV_MONEY'] as const
-const statuses = ['CREDIT_APPLIED', 'CREDIT_APPLIED', 'CREDIT_APPLIED', 'CREDIT_APPLIED', 'PAYMENT_FAILED', 'TOKEN_GENERATED', 'COMMAND_REJECTED', 'PAYMENT_PENDING'] as const
+// Statuts réalistes et proportionnés selon le flux réel : 90% succès, 5% pending, 5% failed/rejected
+const statusWeights = [
+  'CREDIT_APPLIED',       // 40%
+  'CREDIT_APPLIED',
+  'CREDIT_APPLIED',
+  'CREDIT_APPLIED',
+  'TOKEN_GENERATED',      // 20%
+  'TOKEN_GENERATED',
+  'COMMAND_SENT',         // 15%
+  'COMMAND_SENT',
+  'PAYMENT_CONFIRMED',    // 10%
+  'PAYMENT_PENDING',      // 5%
+  'PAYMENT_FAILED',       // 5%
+  'COMMAND_REJECTED',     // 5%
+] as const
+
 const amounts = [1000, 2500, 5000, 5000, 10000, 25000]
 
-export const mockTransactions: Transaction[] = Array.from({ length: 32 }, (_, i) => {
+// Générer un historique réaliste de 3-4 mois avec dates cohérentes
+export const mockTransactions: Transaction[] = Array.from({ length: 64 }, (_, i) => {
   const n = i + 1
-  const meter = mockMeters[i % 5]
+  const meter = mockMeters[i % 10]
   const amount = amounts[i % amounts.length]
-  const day = ((i * 3) % 28) + 1
+
+  // Dates cohérentes : les plus récentes en premier (du 24 août au 24 mai)
+  const dayOffset = Math.floor(i / 2) // 2 transactions par jour environ
+  const txDate = new Date('2026-08-24T23:00:00Z')
+  txDate.setDate(txDate.getDate() - dayOffset)
+
+  // Format date de base
+  const isoDate = txDate.toISOString()
+  const hour = 8 + (i % 14)
+  const minute = ((i * 13) % 60)
+  const second = ((i * 7) % 60)
+  const createdAt = isoDate.replace('T23:00:00.000Z', `T${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}Z`)
+
+  const status = statusWeights[i % statusWeights.length]
+
   return {
     transactionId: `TX-89342${(19832 + n * 7).toString().slice(-4)}`,
     paymentId: `PAY-2026-${(1000 + n).toString()}`,
@@ -44,8 +74,8 @@ export const mockTransactions: Transaction[] = Array.from({ length: 32 }, (_, i)
     provider: providers[i % providers.length],
     amount,
     energyValue: +(amount / 458.7).toFixed(1),
-    status: statuses[i % statuses.length],
-    createdAt: `2026-${day > 14 ? '08' : '07'}-${day.toString().padStart(2, '0')}T${(8 + (i % 14)).toString().padStart(2, '0')}:${((i * 13) % 60).toString().padStart(2, '0')}:00Z`,
+    status,
+    createdAt,
     correlationId: `CORR-82${(9000 + n * 17).toString()}`,
   }
 }).sort((a, b) => b.createdAt.localeCompare(a.createdAt))

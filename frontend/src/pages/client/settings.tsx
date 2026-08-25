@@ -108,22 +108,21 @@ export function ProfilePage() {
     { label: '🔁 Auto-recharge', to: '/app/auto-recharge' },
     { label: '🎟️ Mes tokens', to: '/app/tokens' },
     { label: '📊 Consommation', to: '/app/consommation' },
-    { label: '🧪 Mode démo', to: '/app/demo' },
   ]
   return (
     <div>
       <div className="px-5 pt-5"><h1 className="text-xl font-bold text-gray-900">Profil</h1></div>
       <div className="px-5 mt-4 space-y-4">
-        <Card className="p-5 flex items-center gap-4">
-          <span className="w-14 h-14 rounded-full bg-cie-100 text-cie-700 flex items-center justify-center text-xl font-bold">
-            {customer?.firstName?.[0] ?? 'J'}
-          </span>
-          <div>
-            <p className="font-bold">{customer ? `${customer.firstName} ${customer.lastName}` : 'Jean KOUADIO'}</p>
-            <p className="text-xs text-gray-400">{customer?.phone ?? '07 08 56 78 90'}</p>
-            <p className="text-xs text-gray-400">Compteur {customer?.meterId ?? 'MTR-458921'} · Contrat {customer?.contractId ?? 'CTR-2021-88412'}</p>
+        <div className="p-5 rounded-2xl bg-gradient-to-br from-orange-50 via-white to-green-50 border-2 border-orange-300 flex items-center gap-4">
+          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-orange-400 to-green-500 text-white flex items-center justify-center text-xl font-bold">
+            ⚡
           </div>
-        </Card>
+          <div>
+            <p className="font-bold text-gray-900">{customer ? `${customer.firstName} ${customer.lastName}` : 'Jean KOUADIO'}</p>
+            <p className="text-xs text-orange-600 font-semibold">{customer?.phone ?? '07 08 56 78 90'}</p>
+            <p className="text-xs text-green-700">MTR {customer?.meterId?.slice(-6) ?? '458921'}</p>
+          </div>
+        </div>
         <Card>
           {items.map((i) => (
             <button key={i.to} onClick={() => navigate(i.to)} className="w-full flex items-center justify-between px-4 py-3.5 text-sm border-b border-gray-50 last:border-0">
@@ -164,7 +163,6 @@ export function DemoPage() {
 
   return (
     <div className="min-h-screen bg-[#f6f8fa]">
-      <PageHeader title="Mode démo" onBack={() => navigate(-1)} />
       <div className="px-5 py-4">
         <p className="text-xs text-gray-500 mb-4">Déclenchez des événements simulés (mock MQTT / event bus) pour démontrer le système sans compteur réel.</p>
         <div className="grid grid-cols-1 gap-2.5">

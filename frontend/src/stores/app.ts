@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Customer, NotificationPrefs, AutoRechargeConfig, Alert } from '../types'
+import type { Customer, NotificationPrefs, AutoRechargeConfig, Alert, PaymentProvider } from '../types'
 import { mockAlerts } from '../mocks/data'
 
 interface Toast {
@@ -7,6 +7,15 @@ interface Toast {
   title: string
   message: string
   severity: 'SUCCESS' | 'WARNING' | 'CRITICAL' | 'INFO'
+}
+
+interface TransactionRecord {
+  id: string
+  date: string
+  amount: number
+  provider: PaymentProvider
+  status: 'success' | 'failed'
+  meterId: string
 }
 
 interface AppState {
@@ -26,6 +35,12 @@ interface AppState {
 
   autoRecharge: AutoRechargeConfig
   setAutoRecharge: (cfg: Partial<AutoRechargeConfig>) => void
+
+  transactions: TransactionRecord[]
+  addTransaction: (t: Omit<TransactionRecord, 'id' | 'date'>) => void
+
+  lastPaymentAmount: number
+  setLastPaymentAmount: (amount: number) => void
 }
 
 let toastId = 0
@@ -59,4 +74,16 @@ export const useAppStore = create<AppState>((set) => ({
     provider: 'WAVE', dailyCapFcfa: 10000, monthlyCapFcfa: 50000,
   },
   setAutoRecharge: (cfg) => set((s) => ({ autoRecharge: { ...s.autoRecharge, ...cfg } })),
+
+  transactions: [],
+  addTransaction: (t) => set((s) => ({
+    transactions: [{
+      ...t,
+      id: `TXN-${Date.now()}`,
+      date: new Date().toLocaleString("fr-FR"),
+    }, ...s.transactions],
+  })),
+
+  lastPaymentAmount: 0,
+  setLastPaymentAmount: (amount) => set({ lastPaymentAmount: amount }),
 }))

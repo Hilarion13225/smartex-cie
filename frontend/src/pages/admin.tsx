@@ -12,7 +12,7 @@ export function AdminUsers() {
   }
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Utilisateurs" value={(users?.length ?? 0).toString()} />
         <KpiCard label="Actifs" value={(users?.filter((u) => u.status === 'ACTIVE').length ?? 0).toString()} subColor="text-cie-600" />
         <KpiCard label="Suspendus" value={(users?.filter((u) => u.status === 'SUSPENDED').length ?? 0).toString()} subColor="text-red-500" />
@@ -165,13 +165,13 @@ export function AdminServices() {
   const color: Record<ServiceHealth['status'], string> = { UP: 'green', DEGRADED: 'orange', DOWN: 'red' }
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Services UP" value={(services?.filter((s) => s.status === 'UP').length ?? 0).toString()} subColor="text-cie-600" />
         <KpiCard label="Dégradés" value={(services?.filter((s) => s.status === 'DEGRADED').length ?? 0).toString()} subColor="text-orange-500" />
         <KpiCard label="Down" value={(services?.filter((s) => s.status === 'DOWN').length ?? 0).toString()} subColor="text-red-500" />
         <KpiCard label="Latence moyenne" value={services ? `${Math.round(services.reduce((a, s) => a + s.latencyMs, 0) / services.length)} ms` : '—'} />
       </div>
-      <div className="grid xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {(services ?? []).map((s) => (
           <Card key={s.name} className="p-5 flex items-center justify-between">
             <div>

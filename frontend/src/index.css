@@ -38,3 +38,6 @@ body { background: #f6f8fa; color: #1f2937; -webkit-font-smoothing: antialiased;
 
 @keyframes toast-in { from { transform: translateY(-12px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
 .animate-toast { animation: toast-in .25s ease-out; }
+
+@keyframes shake { 0%, 100% { transform: rotate(0deg) } 25% { transform: rotate(-8deg) } 75% { transform: rotate(8deg) } }
+@keyframes fadeOut { from { opacity: 1 } to { opacity: 0 } }

@@ -108,19 +108,25 @@ export function FullScreenLoader({ title, subtitle, wave = false }: { title: str
 
 export function Toasts() {
   const { toasts, dismissToast } = useAppStore()
-  const border: Record<string, string> = {
-    SUCCESS: 'border-l-cie-500', WARNING: 'border-l-orange-500', CRITICAL: 'border-l-red-500', INFO: 'border-l-blue-500',
+  const icons: Record<string, string> = {
+    SUCCESS: '✓', WARNING: '⚠️', CRITICAL: '❌', INFO: 'ℹ️',
+  }
+  const bgColors: Record<string, string> = {
+    SUCCESS: 'bg-green-50 border-l-green-500', WARNING: 'bg-orange-50 border-l-orange-500', CRITICAL: 'bg-red-50 border-l-red-500', INFO: 'bg-blue-50 border-l-blue-500',
+  }
+  const textColors: Record<string, string> = {
+    SUCCESS: 'text-green-700', WARNING: 'text-orange-700', CRITICAL: 'text-red-700', INFO: 'text-blue-700',
   }
   return (
     <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[100] w-[92%] max-w-sm space-y-2">
       {toasts.map((t) => (
-        <div key={t.id} className={`animate-toast bg-white rounded-xl shadow-lg border border-gray-100 border-l-4 ${border[t.severity]} p-3 flex items-start gap-2`}>
-          <SeverityDot severity={t.severity} />
+        <div key={t.id} className={`animate-toast bg-white rounded-xl shadow-lg border border-gray-100 border-l-4 ${bgColors[t.severity]} p-3 flex items-start gap-3`}>
+          <span className={`text-xl shrink-0 ${textColors[t.severity]} animate-bounce`} style={{ animation: 'shake 0.5s infinite' }}>🔔</span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-800">{t.title}</p>
+            <p className={`text-sm font-semibold ${textColors[t.severity]}`}>{t.title}</p>
             <p className="text-xs text-gray-500">{t.message}</p>
           </div>
-          <button onClick={() => dismissToast(t.id)} className="text-gray-400 text-sm">✕</button>
+          <button onClick={() => dismissToast(t.id)} className="text-gray-400 text-sm hover:text-gray-600">✕</button>
         </div>
       ))}
     </div>

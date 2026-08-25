@@ -4,103 +4,154 @@ import { createSimulatedRecharge } from '../../services/api'
 import { mqttMock } from '../../services/mqttMock'
 import { useAppStore } from '../../stores/app'
 import { useRechargeStore } from '../../stores/recharge'
-import { fcfaToKwh, fmtFcfa, MOCK_TARIFF_FCFA_PER_KWH } from '../../types'
 import type { PaymentProvider } from '../../types'
+import { fmtFcfa, fcfaToKwh, MOCK_TARIFF_FCFA_PER_KWH } from '../../types'
 import { Button, Card, FullScreenLoader, PageHeader, QrPlaceholder, Spinner } from '../../components/ui'
 
 const QUICK_AMOUNTS = [1000, 2500, 5000, 10000, 25000]
+
+const operatorLogos: Record<string, string> = {
+  WAVE: '/logos/wave-logo.jpg',
+  ORANGE_MONEY: '/logos/orangemoney-logo.jpg',
+  MTN_MONEY: '/logos/mtn-logo.jpg',
+  MOOV_MONEY: '/logos/moov-logo.jpg',
+}
 
 export function RechargeAmount() {
   const navigate = useNavigate()
   const { amount, setAmount } = useRechargeStore()
   const [custom, setCustom] = useState('')
+  const [loading, setLoading] = useState(false)
   const effective = custom ? parseInt(custom) || 0 : amount
 
+  const handleContinue = () => {
+    if (effective < 500) return
+    setLoading(true)
+    setTimeout(() => {
+      if (custom) setAmount(effective)
+      navigate('/app/recharge/moyen')
+    }, 300)
+  }
+
   return (
-    <div>
-      <PageHeader title="Choisir un montant" onBack={() => navigate('/app')} />
-      <div className="px-5 py-5">
-        <p className="text-xs text-gray-500 mb-3">Montant rapide</p>
-        <div className="grid grid-cols-2 gap-3">
-          {QUICK_AMOUNTS.map((a) => (
-            <button
-              key={a}
-              onClick={() => { setAmount(a); setCustom('') }}
-              className={`rounded-xl px-4 py-3.5 text-sm font-bold border transition ${!custom && amount === a ? 'bg-cie-600 text-white border-cie-600' : 'bg-white border-gray-200 text-gray-800'}`}
-            >
-              {a.toLocaleString('fr-FR')} FCFA
-            </button>
-          ))}
-          <input
-            value={custom}
-            onChange={(e) => setCustom(e.target.value.replace(/\D/g, ''))}
-            placeholder="Autre montant"
-            inputMode="numeric"
-            className="rounded-xl px-4 py-3.5 text-sm font-semibold border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-cie-500"
-          />
+    <div className="min-h-screen flex flex-col bg-white">
+      <PageHeader title="Montant" onBack={() => navigate('/app')} />
+
+      <div className="flex-1 px-5 py-4 space-y-4">
+        {/* Montant sélectionné - EN PREMIER */}
+        <div className="bg-gradient-to-br from-orange-400 to-orange-500 text-white rounded-2xl p-6 text-center">
+          <p className="text-sm opacity-90">Montant à recharger</p>
+          <p className="text-5xl font-extrabold mt-2">{fmtFcfa(effective)}</p>
+          <p className="text-sm opacity-90 mt-2">≈ {fcfaToKwh(effective).toFixed(1)} kWh</p>
         </div>
 
-        <div className="mt-8">
-          <p className="text-3xl font-extrabold text-gray-900">{fmtFcfa(effective)}</p>
-          <p className="text-gray-500 mt-1">≈ {fcfaToKwh(effective).toFixed(1)} kWh</p>
-          <p className="text-[11px] text-gray-400 mt-1">Tarif simulé : {MOCK_TARIFF_FCFA_PER_KWH} F / kWh (configurable — MOCK)</p>
+        {/* Montants rapides */}
+        <div>
+          <p className="text-xs text-gray-600 font-bold mb-2">RAPIDES</p>
+          <div className="grid grid-cols-2 gap-2">
+            {QUICK_AMOUNTS.map((a) => (
+              <button
+                key={a}
+                onClick={() => { setAmount(a); setCustom('') }}
+                disabled={loading}
+                className={`py-2 px-3 text-sm font-bold rounded-lg border-2 transition ${!custom && amount === a ? 'bg-cie-600 text-white border-cie-600' : 'bg-white border-gray-300 text-gray-900'} ${loading ? 'opacity-50' : ''}`}
+              >
+                {(a/1000).toFixed(0)}k
+              </button>
+            ))}
+          </div>
         </div>
 
+        {/* Montant custom */}
+        <input
+          value={custom}
+          onChange={(e) => setCustom(e.target.value.replace(/\D/g, ''))}
+          placeholder="Montant personnalisé"
+          inputMode="numeric"
+          disabled={loading}
+          className="w-full py-3 px-4 text-lg font-bold border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cie-500 disabled:opacity-50"
+        />
+      </div>
+
+      {/* BOUTON EN AVANT - GRAND ET VISIBLE */}
+      <div className="px-5 py-4 bg-white border-t-4 border-orange-400">
         <Button
-          disabled={effective < 500}
-          onClick={() => { if (custom) setAmount(effective); navigate('/app/recharge/moyen') }}
-          className="w-full mt-10"
+          disabled={effective < 500 || loading}
+          onClick={handleContinue}
+          className="w-full py-4 text-lg font-bold"
         >
-          Continuer
+          {loading ? '⏳ Chargement...' : `Confirmer ${fmtFcfa(effective)}`}
         </Button>
       </div>
     </div>
   )
 }
 
-const PROVIDERS: { id: PaymentProvider; name: string; sub: string; icon: string; bg: string }[] = [
-  { id: 'WAVE', name: 'Wave', sub: 'Payer avec Wave', icon: '🐧', bg: 'bg-sky-100' },
-  { id: 'ORANGE_MONEY', name: 'Orange Money', sub: 'Payer avec Orange Money', icon: '🟠', bg: 'bg-orange-100' },
-  { id: 'MTN_MONEY', name: 'MTN Money', sub: 'Payer avec MTN Money', icon: '🟡', bg: 'bg-yellow-100' },
-  { id: 'MOOV_MONEY', name: 'Moov Money', sub: 'Payer avec Moov Money', icon: '🔵', bg: 'bg-blue-100' },
+const PROVIDERS: { id: PaymentProvider; name: string; sub: string; logo: string }[] = [
+  { id: 'WAVE', name: 'Wave', sub: 'Payer avec Wave', logo: '/logos/wave-logo.jpg' },
+  { id: 'ORANGE_MONEY', name: 'Orange Money', sub: 'Payer avec Orange Money', logo: '/logos/orangemoney-logo.jpg' },
+  { id: 'MTN_MONEY', name: 'MTN Money', sub: 'Payer avec MTN Money', logo: '/logos/mtn-logo.jpg' },
+  { id: 'MOOV_MONEY', name: 'Moov Money', sub: 'Payer avec Moov Money', logo: '/logos/moov-logo.jpg' },
 ]
 
 export function RechargeMethod() {
   const navigate = useNavigate()
   const { provider, setProvider, amount, setRecharge, setOutcome } = useRechargeStore()
   const customer = useAppStore((s) => s.customer)
+  const [loading, setLoading] = useState(false)
 
   const start = () => {
-    const r = createSimulatedRecharge(amount, provider, customer?.meterId ?? 'MTR-458921')
-    setRecharge(r)
-    setOutcome('success')
-    navigate('/app/recharge/paiement')
+    if (!provider) return
+    setLoading(true)
+    setTimeout(() => {
+      const r = createSimulatedRecharge(amount, provider, customer?.meterId ?? 'MTR-458921')
+      setRecharge(r)
+      setOutcome('success')
+      navigate('/app/recharge/paiement')
+    }, 800)
   }
 
   return (
-    <div>
-      <PageHeader title="Choisir un moyen de paiement" onBack={() => navigate(-1)} />
-      <div className="px-5 py-5 space-y-3">
-        {PROVIDERS.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => setProvider(p.id)}
-            className={`w-full flex items-center gap-3 rounded-2xl border p-4 bg-white text-left transition ${provider === p.id ? 'border-cie-500 ring-2 ring-cie-100' : 'border-gray-200'}`}
-          >
-            <span className={`w-11 h-11 rounded-xl ${p.bg} flex items-center justify-center text-xl`}>{p.icon}</span>
-            <span className="flex-1">
-              <span className="block font-semibold text-gray-900 text-sm">{p.name}</span>
-              <span className="block text-xs text-gray-400">{p.sub}</span>
-            </span>
-            <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${provider === p.id ? 'border-cie-600 bg-cie-600' : 'border-gray-300'}`}>
-              {provider === p.id && <span className="text-white text-[10px]">✓</span>}
-            </span>
-          </button>
-        ))}
-        <div className="flex justify-center gap-6 pt-4 text-[10px] text-gray-400">
-          <span>🔒 Paiement sécurisé</span><span>⚡ Rapide</span><span>🕒 Disponible 24/7</span>
+    <div className="min-h-screen flex flex-col bg-white">
+      <PageHeader title="Moyen de paiement" onBack={() => navigate(-1)} />
+
+      <div className="flex-1 px-5 py-4 space-y-3">
+        {/* Montant affiché */}
+        <div className="bg-green-50 border-2 border-green-300 rounded-xl p-3 text-center">
+          <p className="text-xs text-gray-600">Montant à payer</p>
+          <p className="text-3xl font-extrabold text-green-700">{fmtFcfa(amount)}</p>
         </div>
-        <Button onClick={start} className="w-full mt-4">Continuer</Button>
+
+        {/* Opérateurs */}
+        <div className="space-y-2">
+          {PROVIDERS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setProvider(p.id)}
+              disabled={loading}
+              className={`w-full flex items-center gap-3 rounded-lg border-2 p-3 bg-white text-left transition ${provider === p.id ? 'border-orange-500 bg-orange-50' : 'border-gray-200'} ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <img src={p.logo} alt={p.name} className="w-10 h-10 object-contain" />
+              <span className="flex-1 min-w-0">
+                <span className="block font-bold text-gray-900 text-sm">{p.name}</span>
+              </span>
+              <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition ${provider === p.id ? 'border-orange-500 bg-orange-500' : 'border-gray-300'}`}>
+                {provider === p.id && <span className="text-white text-xs">✓</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* BOUTON EN AVANT - GRAND ET VISIBLE */}
+      <div className="px-5 py-4 bg-white border-t-4 border-orange-400">
+        <Button
+          onClick={start}
+          disabled={loading || !provider}
+          className="w-full py-4 text-lg font-bold"
+        >
+          {loading ? '⏳ Connexion...' : `Confirmer avec ${provider || 'un moyen'}`}
+        </Button>
       </div>
     </div>
   )
@@ -108,7 +159,11 @@ export function RechargeMethod() {
 
 export function WavePayment() {
   const navigate = useNavigate()
-  const { recharge, setOutcome } = useRechargeStore()
+  const { recharge, setOutcome, amount } = useRechargeStore()
+  const customer = useAppStore((s) => s.customer)
+  const addTransaction = useAppStore((s) => s.addTransaction)
+  const notify = useAppStore((s) => s.notify)
+  const setLastPaymentAmount = useAppStore((s) => s.setLastPaymentAmount)
   const [phase, setPhase] = useState<'connect' | 'qr' | 'confirming'>('connect')
 
   useEffect(() => {
@@ -121,36 +176,80 @@ export function WavePayment() {
   const pay = (ok: boolean) => {
     setPhase('confirming')
     setTimeout(() => {
-      if (!ok) { setOutcome('payment_failed'); navigate('/app/recharge/statut') }
-      else navigate('/app/recharge/confirme')
+      if (!ok) {
+        addTransaction({
+          amount: recharge.amount,
+          provider: recharge.provider,
+          status: 'failed',
+          meterId: recharge.meterId,
+        })
+        notify('Paiement échoué', 'Veuillez réessayer', 'WARNING')
+        navigate('/app/recharge/error')
+      } else {
+        addTransaction({
+          amount: recharge.amount,
+          provider: recharge.provider,
+          status: 'success',
+          meterId: recharge.meterId,
+        })
+        setLastPaymentAmount(recharge.amount)
+        navigate(`/app/recharge/progress?operator=${recharge.provider}&amount=${recharge.amount}`)
+      }
     }, 2200)
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f8fa]">
-      {phase === 'connect' && <FullScreenLoader wave title="Connexion au service de paiement..." subtitle="Simulation Wave — aucun paiement réel" />}
-      {phase === 'confirming' && <FullScreenLoader wave title="Paiement en attente..." subtitle="Validation de la transaction Wave (simulée)" />}
-      <PageHeader title="Paiement Wave (simulation)" onBack={() => navigate(-1)} />
-      <div className="px-5 py-5">
-        <Card className="p-4 text-sm space-y-2">
-          <div className="flex justify-between"><span className="text-gray-400">Montant</span><b>{fmtFcfa(recharge.amount)}</b></div>
-          <div className="flex justify-between"><span className="text-gray-400">Référence</span><b>{recharge.rechargeId}</b></div>
-          <div className="flex justify-between"><span className="text-gray-400">Compteur</span><b>{recharge.meterId}</b></div>
-        </Card>
+    <div className="min-h-screen flex flex-col bg-white">
+      {phase === 'connect' && <FullScreenLoader wave title="Connexion..." subtitle="Simulation Wave" />}
 
-        <div className="mt-6 rounded-3xl bg-gradient-to-b from-wave-500 to-wave-600 p-6 text-center text-white">
-          <p className="text-sm font-medium">Scannez le QR code avec votre application Wave</p>
-          <div className="mt-4 mx-auto w-52">
-            <QrPlaceholder seed={recharge.transactionId} className="w-52 h-52 mx-auto shadow-xl" />
+      <div className="flex-1 flex flex-col items-center justify-center px-5 py-8 text-center gap-6">
+        {/* Logo opérateur */}
+        <img
+          src={operatorLogos[recharge.provider] || '/logos/wave-logo.jpg'}
+          alt={recharge.provider}
+          className="h-20 w-20 object-contain"
+        />
+
+        {/* Opérateur et montant */}
+        <div>
+          <p className="text-xs text-gray-500">Paiement via {recharge.provider.replace('_', ' ')}</p>
+          <p className="text-4xl font-extrabold text-orange-700 mt-2">{fmtFcfa(recharge.amount)}</p>
+          <p className="text-sm text-gray-500 mt-2">≈ {fcfaToKwh(recharge.amount).toFixed(1)} kWh</p>
+        </div>
+
+        {/* QR Code compact */}
+        {phase === 'qr' && (
+          <div className="bg-gradient-to-br from-orange-50 to-white p-4 rounded-2xl border-2 border-orange-200">
+            <div className="w-40 h-40">
+              <QrPlaceholder seed={recharge.transactionId} className="w-40 h-40" />
+            </div>
           </div>
-          <p className="text-[10px] text-purple-100 mt-3">QR simulé — PoC (aucune intégration Wave réelle)</p>
-        </div>
+        )}
 
-        <div className="mt-6 space-y-3">
-          <Button variant="wave" className="w-full" onClick={() => pay(true)}>Valider la transaction (simulé)</Button>
-          <Button variant="secondary" className="w-full" onClick={() => pay(false)}>Simuler un échec de paiement</Button>
-          <button onClick={() => navigate('/app')} className="w-full text-center text-sm text-gray-400 py-2">Annuler</button>
+        {/* Détails transaction */}
+        <div className="w-full bg-gray-50 rounded-xl p-4 text-left text-sm">
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between text-gray-600"><span>Référence</span><span className="font-mono text-gray-900">{recharge.rechargeId}</span></div>
+            <div className="flex justify-between text-gray-600"><span>Compteur</span><span className="font-mono text-gray-900">{recharge.meterId}</span></div>
+          </div>
         </div>
+      </div>
+
+      {/* Sticky buttons */}
+      <div className="bg-gradient-to-t from-white via-white to-white/80 p-5 border-t border-gray-100 space-y-3">
+        <Button
+          onClick={() => pay(true)}
+          className="w-full py-4 text-lg font-bold"
+        >
+          ✓ Confirmer le paiement
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => pay(false)}
+          className="w-full text-sm"
+        >
+          Tester l'échec
+        </Button>
       </div>
     </div>
   )
@@ -228,7 +327,6 @@ export function RechargeStatus() {
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
           <span className="animate-pop w-24 h-24 rounded-full bg-red-500 text-white text-5xl flex items-center justify-center">✕</span>
           <h2 className="text-xl font-bold mt-6">Paiement échoué</h2>
-          <p className="text-sm text-gray-500 mt-2">La transaction {recharge.transactionId} n’a pas pu être validée. Aucun montant n’a été débité (simulation).</p>
         </div>
         <div className="p-6 space-y-3">
           <Button className="w-full" onClick={() => navigate('/app/recharge')}>Réessayer</Button>
@@ -326,7 +424,6 @@ export function TokenDetailPage() {
           </div>
           <div className="flex gap-3 mt-6">
             <Button variant="secondary" className="flex-1" onClick={() => { navigator.clipboard?.writeText(data?.tokenValue ?? ''); notify('Copié', 'Token copié dans le presse-papiers', 'INFO') }}>📋 Copier le token</Button>
-            <Button variant="secondary" className="flex-1" onClick={() => notify('Partage simulé', 'Fonction de partage (MOCK)', 'INFO')}>↗ Partager</Button>
           </div>
         </Card>
         <button onClick={() => navigate('/app/tokens')} className="w-full text-center text-sm text-cie-600 font-semibold mt-5">Voir tous mes tokens</button>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../../services/api'
+import { useAppStore } from '../../stores/app'
 import type { Token, Transaction } from '../../types'
 import { fmtFcfa } from '../../types'
 import { Card, PageHeader, RechargeStatusBadge, Skeleton } from '../../components/ui'
@@ -9,13 +10,43 @@ const providerLabel: Record<string, string> = {
   WAVE: 'Wave', ORANGE_MONEY: 'Orange Money', MTN_MONEY: 'MTN Money', MOOV_MONEY: 'Moov Money',
 }
 
+const providerLogo: Record<string, string> = {
+  WAVE: '/logos/wave-logo.jpg',
+  ORANGE_MONEY: '/logos/orangemoney-logo.jpg',
+  MTN_MONEY: '/logos/mtn-logo.jpg',
+  MOOV_MONEY: '/logos/moov-logo.jpg',
+}
+
 export function TransactionsPage() {
   const navigate = useNavigate()
   const [txs, setTxs] = useState<Transaction[] | null>(null)
   const [status, setStatus] = useState('TOUS')
   const [provider, setProvider] = useState('TOUS')
+  const storeTransactions = useAppStore((s) => s.transactions)
 
-  useEffect(() => { api.listTransactions().then(setTxs) }, [])
+  useEffect(() => {
+    api.listTransactions().then((apiTxs) => {
+      // Combine API transactions with store transactions (store first for recency)
+      const combined = [
+        ...storeTransactions.map((st) => ({
+          transactionId: st.id,
+          amount: st.amount,
+          energyValue: (st.amount / 1000) * 1.25,
+          provider: st.provider,
+          status: st.status === 'success' ? 'CREDIT_APPLIED' : 'PAYMENT_FAILED',
+          meterId: st.meterId,
+          customerId: '',
+          rechargeId: '',
+          tokenId: '',
+          correlationId: '',
+          createdAt: st.date,
+          updatedAt: st.date,
+        } as Transaction)),
+        ...apiTxs,
+      ]
+      setTxs(combined)
+    })
+  }, [storeTransactions])
 
   const filtered = useMemo(() => (txs ?? []).filter((t) =>
     (status === 'TOUS' || t.status === status) && (provider === 'TOUS' || t.provider === provider),
@@ -47,7 +78,7 @@ export function TransactionsPage() {
         ) : filtered.map((t) => (
           <button key={t.transactionId} onClick={() => navigate(`/app/transactions/${t.transactionId}`)} className="w-full text-left">
             <Card className="p-4 flex items-center gap-3">
-              <span className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">{t.provider === 'WAVE' ? '🐧' : t.provider === 'ORANGE_MONEY' ? '🟠' : t.provider === 'MTN_MONEY' ? '🟡' : '🔵'}</span>
+              <img src={providerLogo[t.provider] || '/logos/wave-logo.jpg'} alt={t.provider} className="w-10 h-10 rounded-xl object-contain" />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-semibold text-gray-900">{fmtFcfa(t.amount)} <span className="text-gray-400 font-normal">· {t.energyValue} kWh</span></span>
                 <span className="block text-[11px] text-gray-400 truncate">{t.transactionId} · {new Date(t.createdAt).toLocaleDateString('fr-FR')} · {providerLabel[t.provider]}</span>

@@ -9,6 +9,8 @@ import {
   PaymentConfirmed, RechargeAmount, RechargeMethod, RechargeStatus,
   TokenDetailPage, TokenFallback, WavePayment,
 } from './pages/client/recharge'
+import { PaymentProgressPage } from './pages/client/payment-progress'
+import { PaymentErrorPage } from './pages/client/payment-error'
 import { TokensPage, TransactionDetail, TransactionsPage } from './pages/client/finance'
 import { AlertsPage, AutoRechargePage, DemoPage, ProfilePage } from './pages/client/settings'
 import {
@@ -65,6 +67,8 @@ export default function App() {
           <Route path="recharge/confirmation" element={<PaymentConfirmed />} />
           <Route path="recharge/statut" element={<RechargeStatus />} />
           <Route path="recharge/fallback" element={<TokenFallback />} />
+          <Route path="recharge/progress" element={<PaymentProgressPage />} />
+          <Route path="recharge/error" element={<PaymentErrorPage />} />
         </Route>
 
         {/* Espace CIE (supervision) */}

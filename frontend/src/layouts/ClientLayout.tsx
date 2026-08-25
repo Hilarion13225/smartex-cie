@@ -3,10 +3,10 @@ import { Toasts } from '../components/ui'
 import { useAppStore } from '../stores/app'
 
 const tabs = [
-  { to: '/app', label: 'Accueil', icon: '🏠', end: true },
+  { to: '/app', label: 'Accueil', icon: '🏠' },
   { to: '/app/compteur', label: 'Compteur', icon: '⚡' },
   { to: '/app/recharge', label: '', icon: '+', fab: true },
-  { to: '/app/transactions', label: 'Transactions', icon: '🧾' },
+  { to: '/app/transactions', label: 'Transactions', icon: '📊' },
   { to: '/app/profil', label: 'Profil', icon: '👤' },
 ]
 
@@ -17,8 +17,23 @@ export default function ClientLayout() {
   return (
     <div className="min-h-full max-w-md mx-auto bg-[#f6f8fa] relative pb-20">
       <Toasts />
+      <header className="sticky top-0 z-20 bg-white border-b-2 border-orange-400 px-4 py-3 flex items-center justify-between">
+        <img src="/logos/cie-logo.jpg" alt="CIE" className="h-8 object-contain" />
+        <NavLink
+          to="/app/alertes"
+          className={({ isActive }) =>
+            `relative p-2 text-xl inline-block transition ${isActive ? 'text-orange-600' : 'text-orange-500'}`
+          }
+          style={unread > 0 ? { animation: 'shake 0.5s infinite' } : {}}
+        >
+          🔔
+          {unread > 0 && (
+            <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center animate-pulse font-bold">{unread}</span>
+          )}
+        </NavLink>
+      </header>
       <Outlet context={{ unread, openAlerts: () => navigate('/app/alertes') }} />
-      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-100 flex items-end justify-around px-2 pt-1.5 pb-2 z-30">
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-gradient-to-r from-white via-orange-50 to-white border-t-2 border-orange-400 flex items-end justify-around px-2 pt-2 pb-2 z-30">
         {tabs.map((t) =>
           t.fab ? (
             <NavLink key={t.to} to={t.to} className="relative -top-4">

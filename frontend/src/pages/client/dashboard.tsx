@@ -24,10 +24,14 @@ export function ClientDashboard() {
   const navigate = useNavigate()
   const customer = useAppStore((s) => s.customer)
   const alerts = useAppStore((s) => s.alerts)
+  const lastPaymentAmount = useAppStore((s) => s.lastPaymentAmount)
   const [meter, setMeter] = useState<Meter | null>(null)
+  const [showNotif, setShowNotif] = useState(true)
 
   useEffect(() => {
     api.getMeter(customer?.meterId ?? 'MTR-458921').then(setMeter)
+    const notifTimer = setTimeout(() => setShowNotif(false), 5000)
+    return () => clearTimeout(notifTimer)
   }, [customer])
 
   const unread = alerts.filter((a) => !a.read)
@@ -35,13 +39,18 @@ export function ClientDashboard() {
 
   return (
     <div>
-      <div className="flex items-center justify-between px-5 pt-5">
-        <h1 className="text-xl font-bold text-gray-900">Bonjour, {customer?.firstName ?? 'Jean'} 👋</h1>
-        <Link to="/app/alertes" className="relative text-xl">
-          🔔
-          {unread.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center">{unread.length}</span>}
-        </Link>
+      <div className="px-5 pt-5">
+        <h1 className="text-2xl font-bold text-gray-900">
+          Bonjour <span className="text-orange-600">{customer?.firstName ?? 'Jean'}</span> 👋
+        </h1>
       </div>
+
+      {showNotif && (
+        <div className="mx-5 mt-4 rounded-xl bg-gradient-to-r from-green-50 to-orange-50 border-2 border-green-400 p-4 animate-slide-up">
+          <p className="text-sm font-bold text-green-700">✓ Bienvenue {customer?.firstName} !</p>
+          <p className="text-xs text-orange-600 mt-1">Votre espace est prêt - Gérez votre électricité en toute sécurité</p>
+        </div>
+      )}
 
       <div className="px-5 mt-4 space-y-4">
         {!meter ? (
@@ -60,13 +69,13 @@ export function ClientDashboard() {
               <MeterStatusBadge status={meter.status} />
             </Card>
 
-            <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 text-white p-5 flex items-center justify-between shadow-lg shadow-blue-600/20 animate-slide-up">
+            <div className="rounded-2xl bg-gradient-to-br from-orange-500 via-orange-400 to-green-500 text-white p-5 flex items-center justify-between shadow-lg shadow-orange-500/30 animate-slide-up">
               <div>
-                <p className="text-xs text-blue-100">Crédit restant</p>
-                <p className="text-3xl font-extrabold mt-1">{fmtFcfa(meter.creditFcfa)}</p>
-                <p className="text-sm text-blue-100 mt-1">≈ {fmtKwh(meter.creditKwh)}</p>
+                <p className="text-xs text-white font-semibold">⚡ Crédit restant</p>
+                <p className="text-3xl font-extrabold mt-1">{fmtFcfa(meter.creditFcfa + lastPaymentAmount)}</p>
+                <p className="text-sm text-white mt-1">≈ {fmtKwh((meter.creditFcfa + lastPaymentAmount) / 1000 * 1.25)}</p>
               </div>
-              <CreditRing percent={meter.creditPercent} />
+              <CreditRing percent={Math.min(100, ((meter.creditFcfa + lastPaymentAmount) / 50000) * 100)} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -126,43 +135,29 @@ export function MeterPage() {
     <div>
       <div className="px-5 pt-5 flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-900">Mon compteur</h1>
-        <button onClick={() => navigate('/app/demo')} className="text-[10px] text-gray-400 border border-gray-200 rounded-full px-2 py-1">Mode démo</button>
       </div>
       <div className="px-5 mt-4 space-y-4">
         {!meter ? (
           <Skeleton className="h-64 rounded-2xl" />
         ) : (
           <>
-            <Card className="p-5 animate-slide-up">
+            <div className="p-5 rounded-2xl bg-gradient-to-br from-orange-50 via-white to-green-50 border-2 border-orange-300 animate-slide-up">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-bold text-gray-900 text-lg">{meter.meterId}</p>
-                  <p className="text-xs text-gray-400">{meter.location} · Dongle {meter.deviceId}</p>
+                  <p className="font-bold text-orange-700 text-lg">⚡ {meter.meterId}</p>
+                  <p className="text-xs text-green-600">{meter.location} · {meter.deviceId}</p>
                 </div>
                 <MeterStatusBadge status={meter.status} />
               </div>
               <div className="grid grid-cols-2 gap-y-4 mt-5 text-sm">
-                <div><p className="text-[11px] text-gray-400">Dernier heartbeat</p><p className="font-semibold">{new Date(meter.lastHeartbeat).toLocaleTimeString('fr-FR')}</p></div>
-                <div><p className="text-[11px] text-gray-400">Tension</p><p className="font-semibold">{meter.voltage} V</p></div>
-                <div><p className="text-[11px] text-gray-400">Courant</p><p className="font-semibold">{meter.current} A</p></div>
-                <div><p className="text-[11px] text-gray-400">Conso aujourd’hui</p><p className="font-semibold">{fmtKwh(meter.consumptionTodayKwh)}</p></div>
-                <div><p className="text-[11px] text-gray-400">Crédit</p><p className="font-semibold">{fmtFcfa(meter.creditFcfa)}</p></div>
-                <div><p className="text-[11px] text-gray-400">Alertes</p><p className="font-semibold">{meter.alertCount}</p></div>
+                <div><p className="text-[11px] text-gray-500">Dernier heartbeat</p><p className="font-semibold text-orange-700">{new Date(meter.lastHeartbeat).toLocaleTimeString("fr-FR")}</p></div>
+                <div><p className="text-[11px] text-gray-500">Tension</p><p className="font-semibold text-orange-700">{meter.voltage} V</p></div>
+                <div><p className="text-[11px] text-gray-500">Courant</p><p className="font-semibold text-orange-700">{meter.current} A</p></div>
+                <div><p className="text-[11px] text-gray-500">Conso</p><p className="font-semibold text-green-700">{fmtKwh(meter.consumptionTodayKwh)}</p></div>
+                <div><p className="text-[11px] text-gray-500">Crédit</p><p className="font-semibold text-green-700">{fmtFcfa(meter.creditFcfa)}</p></div>
+                <div><p className="text-[11px] text-gray-500">Alertes</p><p className="font-semibold text-red-600">{meter.alertCount}</p></div>
               </div>
-            </Card>
-            <Card className="p-4">
-              <p className="text-sm font-semibold text-gray-800 mb-3">Connectivité IoT (simulée)</p>
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>Compteur</span><span className="flex-1 border-t border-dashed border-gray-300 mx-2" />
-                <span>Dongle</span><span className="flex-1 border-t border-dashed border-gray-300 mx-2" />
-                <span>MQTT/TLS</span><span className="flex-1 border-t border-dashed border-gray-300 mx-2" />
-                <span>Plateforme</span>
-              </div>
-              <div className="mt-3 flex items-center gap-2">
-                <Badge color={meter.status === 'ONLINE' ? 'green' : 'red'}>{meter.status === 'ONLINE' ? 'Liaison active' : 'Liaison interrompue'}</Badge>
-                <span className="text-[10px] text-gray-400">MOCK — le navigateur ne se connecte pas au broker réel</span>
-              </div>
-            </Card>
+            </div>
           </>
         )}
       </div>
