@@ -50,3 +50,17 @@ management:
 logging:
   pattern:
     console: "%d{ISO8601} [%X{correlationId:-no-correlation}] %-5level %logger{36} - %msg%n"
+
+---
+# Profil "dev" (voir docker-compose.yml SPRING_PROFILES_ACTIVE=dev, même garde-fou
+# que common.CorsConfig @Profile("dev")) : ajoute db/migration-dev/ aux migrations
+# Flyway, qui contient les seeds de laboratoire non destinés à un environnement
+# au-delà du PoC local (V4__seed_lab_operator.sql — voir ce fichier pour le détail
+# de ce qui y est/n'y est pas en dur). Absent de ce profil, ces migrations ne
+# s'appliquent jamais.
+spring:
+  config:
+    activate:
+      on-profile: dev
+  flyway:
+    locations: classpath:db/migration,classpath:db/migration-dev

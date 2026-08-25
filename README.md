@@ -75,6 +75,23 @@ téléphone `0700000099`) : obtenir un token opérateur suit exactement le même
 login/OTP que ci-dessus, en partant de `POST /auth/login` au lieu de `/auth/register`
 (le compte existe déjà).
 
+**⚠️ Identifiants de laboratoire — ne jamais réutiliser tel quel hors de cet environnement
+local.** Le numéro `0700000099` est fixe et documenté publiquement dans ce dépôt : ce n'est
+pas un secret, seulement une valeur de test connue. Il n'y a en revanche **aucun raccourci
+d'authentification** pour ce compte : la connexion passe par le même flux OTP aléatoire/
+haché/à usage unique que n'importe quel compte `CLIENT` (vérifié end-to-end : code erroné
+rejeté, bon code accepté une seule fois, rejeu du même code rejeté). Le seul élément "en
+dur" est le numéro de téléphone, pas l'authentification elle-même.
+
+Cette migration vit dans `db/migration-dev/` (et non `db/migration/`) et n'est appliquée
+par Flyway que sous le profil Spring `dev` (`spring.flyway.locations` n'inclut ce dossier
+que dans le bloc `on-profile: dev` de `application.yml`) — même garde-fou que
+`common.CorsConfig` (`@Profile("dev")`), activé par `SPRING_PROFILES_ACTIVE=dev` dans
+`docker-compose.yml`. Sous tout autre profil (par défaut), la migration ne s'applique
+jamais et ce compte n'existe pas : vérifié en démarrant le backend sans le profil `dev`
+contre une base vierge — Flyway s'arrête à la version 3, et `POST /auth/login` avec
+`0700000099` renvoie `404 NOT_FOUND` (aucun compte).
+
 ### Autorisation : matrice rôle × endpoint
 
 Au-delà de l'authentification (JWT valide ou non), chaque endpoint protégé applique
