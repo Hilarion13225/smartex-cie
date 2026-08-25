@@ -39,6 +39,15 @@ public class Recharge {
     @Column(name = "token_hash")
     private String tokenHash;
 
+    /**
+     * Provider choisi par le client pour une recharge manuelle (WAVE/ORANGE_MONEY/...) --
+     * null pour une recharge issue de startFromConfirmedPayment, dont le provider fait
+     * autorité via le Payment associé (voir RechargeController.toSummary, qui préfère ce
+     * lookup et ne retombe sur ce champ qu'en son absence).
+     */
+    @Column(name = "provider")
+    private String provider;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private RechargeStatus status;
@@ -55,12 +64,18 @@ public class Recharge {
 
     public Recharge(UUID paymentId, String meterId, String customerId, BigDecimal amountXof,
                      String idempotencyKey, String correlationId) {
+        this(paymentId, meterId, customerId, amountXof, idempotencyKey, correlationId, null);
+    }
+
+    public Recharge(UUID paymentId, String meterId, String customerId, BigDecimal amountXof,
+                     String idempotencyKey, String correlationId, String provider) {
         this.paymentId = paymentId;
         this.meterId = meterId;
         this.customerId = customerId;
         this.amountXof = amountXof;
         this.idempotencyKey = idempotencyKey;
         this.correlationId = correlationId;
+        this.provider = provider;
         this.status = RechargeStatus.CREATED;
     }
 
@@ -82,6 +97,7 @@ public class Recharge {
     public String getIdempotencyKey() { return idempotencyKey; }
     public String getCorrelationId() { return correlationId; }
     public String getTokenHash() { return tokenHash; }
+    public String getProvider() { return provider; }
     public RechargeStatus getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../../services/api'
 import { useAppStore, type TransactionRecord } from '../../stores/app'
 import type { Token, Transaction } from '../../types'
-import { fmtFcfa } from '../../types'
+import { fcfaToKwh, fmtFcfa } from '../../types'
 import { Card, PageHeader, RechargeStatusBadge, Skeleton } from '../../components/ui'
 
 // Les recharges tentées côté client (useAppStore.transactions, voir WavePayment/OMPayment)
@@ -19,7 +19,10 @@ function mapStoreTransaction(st: TransactionRecord): Transaction {
     rechargeId: `RCG-${st.id}`,
     tokenId: `TK-${st.id}`,
     amount: st.amount,
-    energyValue: (st.amount / 1000) * 1.25,
+    // Même tarif que partout ailleurs (fcfaToKwh, 458.7 FCFA/kWh) -- une formule ad-hoc
+    // différente ici affichait une énergie incohérente pour la même recharge selon qu'elle
+    // vienne du store local (juste après paiement) ou de l'API (au rechargement de page).
+    energyValue: +fcfaToKwh(st.amount).toFixed(1),
     provider: st.provider,
     status: st.status === 'success' ? 'CREDIT_APPLIED' : 'PAYMENT_FAILED',
     meterId: st.meterId,
@@ -73,11 +76,15 @@ export function TransactionsPage() {
       <div className="px-5 mt-3 flex gap-2 overflow-x-auto pb-1">
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-xs bg-white border border-gray-200 rounded-full px-3 py-1.5">
           <option value="TOUS">Statut : tous</option>
-          <option value="CREDIT_APPLIED">CREDIT_APPLIED</option>
-          <option value="PAYMENT_FAILED">PAYMENT_FAILED</option>
+          <option value="CREATED">CREATED</option>
           <option value="PAYMENT_PENDING">PAYMENT_PENDING</option>
+          <option value="PAYMENT_CONFIRMED">PAYMENT_CONFIRMED</option>
+          <option value="PAYMENT_FAILED">PAYMENT_FAILED</option>
           <option value="TOKEN_GENERATED">TOKEN_GENERATED</option>
+          <option value="COMMAND_SENT">COMMAND_SENT</option>
+          <option value="CREDIT_APPLIED">CREDIT_APPLIED</option>
           <option value="COMMAND_REJECTED">COMMAND_REJECTED</option>
+          <option value="COMMAND_UNKNOWN">COMMAND_UNKNOWN</option>
         </select>
         <select value={provider} onChange={(e) => setProvider(e.target.value)} className="text-xs bg-white border border-gray-200 rounded-full px-3 py-1.5">
           <option value="TOUS">Fournisseur : tous</option>
@@ -96,7 +103,7 @@ export function TransactionsPage() {
               <img src={providerLogo[t.provider] || '/logos/wave-logo.jpg'} alt={t.provider} className="w-10 h-10 rounded-xl object-contain" />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-semibold text-gray-900">{fmtFcfa(t.amount)} <span className="text-gray-400 font-normal">· {t.energyValue} kWh</span></span>
-                <span className="block text-[11px] text-gray-400 truncate">{t.transactionId} · {new Date(t.createdAt).toLocaleDateString('fr-FR')} · {providerLabel[t.provider]}</span>
+                <span className="block text-[11px] text-gray-400 truncate">{t.transactionId} · {new Date(t.createdAt).toLocaleDateString('fr-FR')} · {providerLabel[t.provider] ?? t.provider}</span>
               </span>
               <RechargeStatusBadge status={t.status} />
             </Card>
@@ -147,7 +154,7 @@ export function TransactionDetail() {
                 <RechargeStatusBadge status={tx.status} />
               </div>
               <div className="mt-4 space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-gray-400">Fournisseur</span><b>{providerLabel[tx.provider]}</b></div>
+                <div className="flex justify-between"><span className="text-gray-400">Fournisseur</span><b>{providerLabel[tx.provider] ?? tx.provider}</b></div>
                 <div className="flex justify-between"><span className="text-gray-400">Énergie</span><b>{tx.energyValue} kWh</b></div>
                 <div className="flex justify-between"><span className="text-gray-400">Compteur</span><b>{tx.meterId}</b></div>
                 <div className="flex justify-between"><span className="text-gray-400">Recharge ID</span><b>{tx.rechargeId}</b></div>

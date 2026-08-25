@@ -41,7 +41,8 @@ public class RechargeController {
         String correlationId = MDC.get(CorrelationIdFilter.MDC_KEY);
         UUID paymentId = request.paymentId() != null ? request.paymentId() : UUID.randomUUID();
         var recharge = orchestrator.startManual(paymentId, request.meterId(), request.customerId(),
-                request.amount(), request.idempotencyKey(), correlationId, request.forceInvalidToken());
+                request.amount(), request.idempotencyKey(), correlationId, request.forceInvalidToken(),
+                request.paymentProvider());
         return ResponseEntity.accepted().body(RechargeResponse.from(recharge));
     }
 
@@ -81,9 +82,13 @@ public class RechargeController {
     }
 
     private RechargeSummaryResponse toSummary(Recharge recharge) {
+        // Le Payment associé (flux automatique, startFromConfirmedPayment) fait autorité
+        // s'il existe ; une recharge manuelle (POST /recharges) n'en crée jamais et ne peut
+        // compter que sur Recharge.provider, fourni par le client à la création (voir
+        // RechargeOrchestrator.startManual).
         String provider = paymentRepository.findById(recharge.getPaymentId())
                 .map(Payment::getProvider)
-                .orElse(null);
+                .orElse(recharge.getProvider());
         return RechargeSummaryResponse.from(recharge, provider);
     }
 

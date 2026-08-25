@@ -81,13 +81,13 @@ class RechargeOrchestratorIdempotencyTest {
                 .thenReturn(Optional.empty());
 
         Recharge first = orchestrator.startManual(UUID.randomUUID(), "CIE-LAB-0001", "CUST-1",
-                new BigDecimal("5000"), "KEY-1", "corr-1", false);
+                new BigDecimal("5000"), "KEY-1", "corr-1", false, "WAVE");
 
         // On simule que la recharge est maintenant persistée sous cette clé.
         when(rechargeRepository.findByIdempotencyKey("KEY-1")).thenReturn(Optional.of(first));
 
         Recharge second = orchestrator.startManual(UUID.randomUUID(), "CIE-LAB-0001", "CUST-1",
-                new BigDecimal("5000"), "KEY-1", "corr-2", false);
+                new BigDecimal("5000"), "KEY-1", "corr-2", false, "WAVE");
 
         assertThat(second.getRechargeId()).isEqualTo(first.getRechargeId());
         // Une seule commande doit avoir été publiée sur le broker MQTT malgré les deux appels.
@@ -126,7 +126,7 @@ class RechargeOrchestratorIdempotencyTest {
         ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
 
         orchestrator.startManual(UUID.randomUUID(), "CIE-LAB-0001", "CUST-1",
-                new BigDecimal("2000"), "KEY-T05", "corr-t05", true);
+                new BigDecimal("2000"), "KEY-T05", "corr-t05", true, "WAVE");
 
         verify(commandPublisher).publishTokenCommand(anyString(), any(), anyString(), tokenCaptor.capture(),
                 anyLong(), any(Instant.class), any(BigDecimal.class));

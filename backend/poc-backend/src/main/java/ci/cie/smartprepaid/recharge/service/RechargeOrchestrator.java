@@ -54,8 +54,11 @@ public class RechargeOrchestrator {
     public Recharge startFromConfirmedPayment(Payment payment, String correlationId) {
         String idempotencyKey = buildIdempotencyKey(payment.getProvider(), payment.getProviderTxId(),
                 payment.getMeterId(), payment.getAmountXof());
+        // provider=null : ce flux a un vrai Payment associé, dont le provider fait déjà
+        // autorité pour l'historique (voir RechargeController.toSummary) -- pas besoin de
+        // le dupliquer sur Recharge.
         return orchestrate(payment.getPaymentId(), payment.getMeterId(), payment.getCustomerId(),
-                payment.getAmountXof(), idempotencyKey, correlationId, false);
+                payment.getAmountXof(), idempotencyKey, correlationId, false, null);
     }
 
     /**
@@ -63,18 +66,21 @@ public class RechargeOrchestrator {
      * `forceInvalidToken`: endpoint de recette T05 (token invalide -> REJECTED, voir
      * README §T05) — force un token contenant le marqueur INVALID reconnu par le
      * mock-dongle. Toujours `false` depuis le flux nominal (paiement confirmé).
+     * `provider` : choisi par le client (WAVE/ORANGE_MONEY/...) -- ce flux ne crée aucun
+     * Payment, donc c'est le seul endroit où cette information est disponible pour
+     * l'historique (voir RechargeController.toSummary, Recharge.provider).
      */
     @Transactional
     public Recharge startManual(UUID paymentId, String meterId, String customerId,
                                  java.math.BigDecimal amountXof, String idempotencyKey, String correlationId,
-                                 boolean forceInvalidToken) {
+                                 boolean forceInvalidToken, String provider) {
         return orchestrate(paymentId, meterId, customerId, amountXof, idempotencyKey, correlationId,
-                forceInvalidToken);
+                forceInvalidToken, provider);
     }
 
     private Recharge orchestrate(UUID paymentId, String meterId, String customerId,
                                   java.math.BigDecimal amountXof, String idempotencyKey, String correlationId,
-                                  boolean forceInvalidToken) {
+                                  boolean forceInvalidToken, String provider) {
         // ALG-02 étape 3: idempotency_key déjà traitée -> retourner l'existant sans recréer.
         var existing = rechargeRepository.findByIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) {
@@ -84,7 +90,8 @@ public class RechargeOrchestrator {
             return existing.get();
         }
 
-        Recharge recharge = new Recharge(paymentId, meterId, customerId, amountXof, idempotencyKey, correlationId);
+        Recharge recharge = new Recharge(paymentId, meterId, customerId, amountXof, idempotencyKey, correlationId,
+                provider);
         recharge = rechargeRepository.save(recharge);
         auditService.record(correlationId, "recharge-orchestrator", "RECHARGE_CREATED", "RECHARGE",
                 recharge.getRechargeId().toString(), "CREATED", null, "meterId=" + meterId);
