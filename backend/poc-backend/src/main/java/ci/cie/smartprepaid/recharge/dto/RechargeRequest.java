@@ -15,5 +15,8 @@ public record RechargeRequest(
         @NotBlank String channel,
         String paymentProvider,
         UUID paymentId, // optionnel: référence au paiement déjà confirmé qui justifie cette recharge
-        @NotBlank String idempotencyKey
+        @NotBlank String idempotencyKey,
+        // Endpoint de recette pour T05 (token invalide -> REJECTED), cf. README §T05.
+        // Absent/false en usage nominal: ne modifie jamais le flux de production.
+        boolean forceInvalidToken
 ) {}

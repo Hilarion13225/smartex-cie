@@ -49,10 +49,24 @@ une commande au statut `ACCEPTED`.
 
 ### T05 — Token invalide → REJECTED
 
-Le mock-dongle rejette tout token contenant le marqueur `INVALID`. Pour déclencher ce cas
-en test manuel, appeler directement l'endpoint de recharge avec un flag de test (à ajouter
-si besoin d'un endpoint de recette dédié — non fourni par défaut pour ne pas polluer le
-flux nominal).
+Le mock-dongle rejette tout token contenant le marqueur `INVALID` (voir `INVALID_TOKEN_MARKER`
+dans `simulators/mock-dongle/dongle.py`). Pour déclencher ce cas en test manuel sans polluer
+le flux nominal, `POST /api/v1/recharges` accepte un champ optionnel `forceInvalidToken`
+(booléen, `false` par défaut) qui force la génération d'un token contenant ce marqueur au
+lieu du token normal `LABTKN-...` :
+
+```bash
+curl -X POST http://localhost:8080/api/v1/recharges \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-1","meterId":"CIE-LAB-0001","amount":2000,"channel":"APP","idempotencyKey":"TEST-T05-1","forceInvalidToken":true}'
+```
+
+La commande passe par `SENT` puis reçoit un ACK `REJECTED` du mock-dongle ; vérifier via
+`GET /api/v1/recharges/{rechargeId}` que `finalStatus` vaut `COMMAND_REJECTED` et que la
+commande listée est au statut `REJECTED`. Un événement d'audit `COMMAND_REJECTED`
+(`errorCode: TOKEN_REJECTED`) doit apparaître dans `GET /api/v1/audit?correlationId=...`.
+Ce champ n'a aucun effet sur le flux nominal (paiement confirmé via `payment-simulator`) :
+il n'existe que sur l'endpoint de recharge manuelle.
 
 ### T06 / T12 — Double commande / rejeu
 
@@ -120,19 +134,16 @@ cd simulators/mock-dongle && pip install -r requirements.txt pytest && pytest -v
 | Migrations DB (schéma + seed) | ✅ Code complet |
 | payment-simulator (Python) | ✅ Testé (4/4 tests passent) |
 | mock-dongle (Python, MQTT + HTTP) | ✅ Testé (3/3 tests passent) |
-| docker-compose (postgres, mosquitto, backend, simulateurs) | ✅ Rédigé, **non testé en intégration** |
-| Backend Java : compilation/tests réels | ⛔ Non exécuté (pas d'accès Maven Central dans ce sandbox) |
+| docker-compose (postgres, mosquitto, backend, simulateurs) | ✅ Testé en intégration (T01→T06/T15) |
+| Backend Java : compilation/tests réels | ✅ `mvn test` exécuté, build Docker validé |
 | Sécurité: mTLS, PKI/HSM, ACL MQTT par device | ⛔ Non implémenté (mosquitto.conf est permissif, à durcir avant tout raccordement réel) |
-| Endpoint de recette pour forcer un token invalide (T05) | ⛔ Non fourni |
+| Endpoint de recette pour forcer un token invalide (T05) | ✅ `forceInvalidToken` sur `POST /api/v1/recharges` |
 | Tests T07 (perte réseau), T08/T09 (reboot/power cycle) | ⛔ Nécessitent un vrai banc labo |
 | incident-service, rules-engine-service (V2) | ⛔ Hors scope PoC actuel |
 
 ## Prochaine étape recommandée
 
-1. **Compiler et lancer réellement le backend Java** avec Claude Code en local
-   (`docker compose up --build` fera le build Maven automatiquement).
-2. Valider le scénario T01→T06→T15 ci-dessus de bout en bout.
-3. Ajouter un endpoint de recette explicite pour forcer T05 (token invalide) sans dépendre
-   d'un flag caché.
-4. Une fois le Gate 1 (mock end-to-end fonctionnel) validé, durcir la sécurité MQTT
+1. Valider le scénario T01→T06→T15 ci-dessus de bout en bout (fait, voir tableau ci-dessus).
+2. Une fois le Gate 1 (mock end-to-end fonctionnel) validé, durcir la sécurité MQTT
    (TLS + ACL) avant tout essai avec un compteur réel de laboratoire CIE.
+3. Dérouler T07-T09 (perte réseau, reboot, coupure alimentation) sur un vrai banc labo.

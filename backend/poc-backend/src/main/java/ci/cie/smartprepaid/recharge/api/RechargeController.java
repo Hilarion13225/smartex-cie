@@ -29,7 +29,7 @@ public class RechargeController {
         String correlationId = MDC.get(CorrelationIdFilter.MDC_KEY);
         UUID paymentId = request.paymentId() != null ? request.paymentId() : UUID.randomUUID();
         var recharge = orchestrator.startManual(paymentId, request.meterId(), request.customerId(),
-                request.amount(), request.idempotencyKey(), correlationId);
+                request.amount(), request.idempotencyKey(), correlationId, request.forceInvalidToken());
         return ResponseEntity.accepted().body(RechargeResponse.from(recharge));
     }
 

@@ -59,18 +59,26 @@ public class RechargeOrchestrator {
         String idempotencyKey = buildIdempotencyKey(payment.getProvider(), payment.getProviderTxId(),
                 payment.getMeterId(), payment.getAmountXof());
         return orchestrate(payment.getPaymentId(), payment.getMeterId(), payment.getCustomerId(),
-                payment.getAmountXof(), idempotencyKey, correlationId);
+                payment.getAmountXof(), idempotencyKey, correlationId, false);
     }
 
-    /** Recharge manuelle initiée via POST /api/v1/recharges (client fournit idempotencyKey). */
+    /**
+     * Recharge manuelle initiée via POST /api/v1/recharges (client fournit idempotencyKey).
+     * `forceInvalidToken`: endpoint de recette T05 (token invalide -> REJECTED, voir
+     * README §T05) — force un token contenant le marqueur INVALID reconnu par le
+     * mock-dongle. Toujours `false` depuis le flux nominal (paiement confirmé).
+     */
     @Transactional
     public Recharge startManual(UUID paymentId, String meterId, String customerId,
-                                 java.math.BigDecimal amountXof, String idempotencyKey, String correlationId) {
-        return orchestrate(paymentId, meterId, customerId, amountXof, idempotencyKey, correlationId);
+                                 java.math.BigDecimal amountXof, String idempotencyKey, String correlationId,
+                                 boolean forceInvalidToken) {
+        return orchestrate(paymentId, meterId, customerId, amountXof, idempotencyKey, correlationId,
+                forceInvalidToken);
     }
 
     private Recharge orchestrate(UUID paymentId, String meterId, String customerId,
-                                  java.math.BigDecimal amountXof, String idempotencyKey, String correlationId) {
+                                  java.math.BigDecimal amountXof, String idempotencyKey, String correlationId,
+                                  boolean forceInvalidToken) {
         // ALG-02 étape 3: idempotency_key déjà traitée -> retourner l'existant sans recréer.
         var existing = rechargeRepository.findByIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) {
@@ -99,7 +107,9 @@ public class RechargeOrchestrator {
         }
 
         // ALG-02 étapes 5-6: génération token + création de la commande (séquence monotone).
-        String tokenPlaintext = generateTokenPlaceholder(meterId, amountXof);
+        String tokenPlaintext = forceInvalidToken
+                ? generateInvalidTokenPlaceholder(meterId)
+                : generateTokenPlaceholder(meterId, amountXof);
         recharge.attachTokenHash(TokenHasher.sha256(tokenPlaintext));
         recharge.transitionTo(RechargeStatus.TOKEN_GENERATED);
         rechargeRepository.save(recharge);
@@ -234,5 +244,10 @@ public class RechargeOrchestrator {
     /** PoC uniquement: à remplacer par un appel réel au système de prépaiement/HSM (§ALG-02 étape 5). */
     private String generateTokenPlaceholder(String meterId, java.math.BigDecimal amount) {
         return "LABTKN-" + meterId + "-" + UUID.randomUUID();
+    }
+
+    /** T05 (recette): token portant le marqueur INVALID reconnu par le mock-dongle -> REJECTED. */
+    private String generateInvalidTokenPlaceholder(String meterId) {
+        return "LABTKN-INVALID-" + meterId + "-" + UUID.randomUUID();
     }
 }
