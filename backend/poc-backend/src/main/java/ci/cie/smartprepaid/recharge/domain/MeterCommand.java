@@ -65,6 +65,11 @@ public class MeterCommand {
         this.sentAt = Instant.now();
     }
 
+    /** T07: renouvelle la fenêtre de validité lors d'un retry après TIMEOUT (§13_MeterAdapter). */
+    public void renewExpiry(Instant newExpiresAt) {
+        this.expiresAt = newExpiresAt;
+    }
+
     public void markAcked(CommandStatus finalStatus) {
         this.status = finalStatus;
         this.ackAt = Instant.now();

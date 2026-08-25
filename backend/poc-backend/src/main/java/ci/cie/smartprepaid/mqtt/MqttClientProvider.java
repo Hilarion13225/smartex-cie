@@ -28,8 +28,20 @@ public class MqttClientProvider {
         this.properties = properties;
     }
 
+    /**
+     * Ne (re)crée un MqttClient que s'il n'en existe encore aucun. Une fois connecté,
+     * `automaticReconnect(true)` + `cleanSession(false)` délèguent entièrement la
+     * reprise sur coupure réseau (T07) à Paho et au broker (session persistante :
+     * abonnements et messages QoS1 en attente conservés côté broker) — recréer un
+     * second MqttClient avec le même clientId pendant que Paho retente sa propre
+     * reconnexion créerait une collision d'identité et ferait "clignoter" la
+     * connexion (le broker ne garde qu'une connexion active par clientId).
+     * Si `publish()`/`subscribe()` échoue pendant une coupure, l'appelant doit
+     * gérer l'échec (voir CommandExpiryWatcher pour les commandes) plutôt que de
+     * forcer une reconnexion manuelle ici.
+     */
     public synchronized MqttClient client() {
-        if (client == null || !client.isConnected()) {
+        if (client == null) {
             try {
                 client = new MqttClient(properties.getBrokerUrl(), properties.getClientId(), new MemoryPersistence());
                 MqttConnectOptions options = new MqttConnectOptions();
@@ -46,6 +58,7 @@ public class MqttClientProvider {
                 client.connect(options);
                 log.info("Connecté au broker MQTT {}", properties.getBrokerUrl());
             } catch (Exception e) {
+                client = null;
                 log.error("Connexion MQTT impossible: {}", e.getMessage());
                 throw new IllegalStateException("Connexion MQTT impossible", e);
             }

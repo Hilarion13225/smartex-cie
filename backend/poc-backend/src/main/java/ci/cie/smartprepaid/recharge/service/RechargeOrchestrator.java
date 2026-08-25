@@ -3,7 +3,6 @@ package ci.cie.smartprepaid.recharge.service;
 import ci.cie.smartprepaid.audit.service.AuditService;
 import ci.cie.smartprepaid.device.domain.Device;
 import ci.cie.smartprepaid.device.service.DeviceService;
-import ci.cie.smartprepaid.mqtt.CommandPublisher;
 import ci.cie.smartprepaid.payment.domain.Payment;
 import ci.cie.smartprepaid.recharge.domain.CommandStatus;
 import ci.cie.smartprepaid.recharge.domain.MeterCommand;
@@ -35,19 +34,16 @@ public class RechargeOrchestrator {
     private final RechargeRepository rechargeRepository;
     private final CommandRepository commandRepository;
     private final DeviceService deviceService;
-    private final CommandPublisher commandPublisher;
     private final CommandDispatcher commandDispatcher;
     private final AuditService auditService;
     private final long commandTtlSeconds;
 
     public RechargeOrchestrator(RechargeRepository rechargeRepository, CommandRepository commandRepository,
-                                 DeviceService deviceService, CommandPublisher commandPublisher,
-                                 CommandDispatcher commandDispatcher, AuditService auditService,
-                                 ci.cie.smartprepaid.mqtt.MqttProperties mqttProperties) {
+                                 DeviceService deviceService, CommandDispatcher commandDispatcher,
+                                 AuditService auditService, ci.cie.smartprepaid.mqtt.MqttProperties mqttProperties) {
         this.rechargeRepository = rechargeRepository;
         this.commandRepository = commandRepository;
         this.deviceService = deviceService;
-        this.commandPublisher = commandPublisher;
         this.commandDispatcher = commandDispatcher;
         this.auditService = auditService;
         this.commandTtlSeconds = mqttProperties.getCommandTtlSeconds();
@@ -179,10 +175,18 @@ public class RechargeOrchestrator {
     private void handleTimeout(MeterCommand command, Recharge recharge, String correlationId) {
         if (command.getRetryCount() < MAX_RETRIES) {
             command.incrementRetry();
+            // Renouvelle la fenêtre de validité : l'ancienne est par définition déjà
+            // dépassée (c'est ce qui a déclenché ce TIMEOUT), la republier telle
+            // quelle serait immédiatement hors-fenêtre côté dongle (T13).
+            Instant newExpiresAt = Instant.now().plusSeconds(commandTtlSeconds);
+            command.renewExpiry(newExpiresAt);
             commandRepository.save(command);
-            commandPublisher.publishTokenCommand(command.getDeviceId(), command.getCommandId(), correlationId,
-                    "[retry-no-plaintext-stored]", command.getSequence(), command.getExpiresAt(),
-                    recharge.getAmountXof());
+            // Publication différée à après le commit (cf. CommandDispatcher), pour la
+            // même raison que l'envoi initial : éviter qu'un ACK ne revienne avant que
+            // ce retry ne soit visible en base pour AckListener.
+            commandDispatcher.dispatchAfterCommit(command.getCommandId(), recharge.getRechargeId(),
+                    command.getDeviceId(), correlationId, "[retry-no-plaintext-stored]", command.getSequence(),
+                    newExpiresAt, recharge.getAmountXof());
             recharge.transitionTo(RechargeStatus.COMMAND_TIMEOUT);
             auditService.record(correlationId, "recharge-orchestrator", "COMMAND_RETRY", "COMMAND",
                     command.getCommandId().toString(), "RETRY", null,
@@ -211,9 +215,11 @@ public class RechargeOrchestrator {
                         "Recharge introuvable pour commande " + commandId));
         command.incrementRetry();
         Instant newExpiry = Instant.now().plusSeconds(commandTtlSeconds);
-        commandPublisher.publishTokenCommand(command.getDeviceId(), command.getCommandId(), correlationId,
-                "[retry-manuel-no-plaintext-stored]", command.getSequence(), newExpiry, recharge.getAmountXof());
+        command.renewExpiry(newExpiry);
         commandRepository.save(command);
+        commandDispatcher.dispatchAfterCommit(command.getCommandId(), recharge.getRechargeId(),
+                command.getDeviceId(), correlationId, "[retry-manuel-no-plaintext-stored]", command.getSequence(),
+                newExpiry, recharge.getAmountXof());
         auditService.record(correlationId, "recharge-orchestrator", "COMMAND_RETRY_MANUAL", "COMMAND",
                 commandId.toString(), "RETRY", null, "operatorId=" + operatorId);
         return command;

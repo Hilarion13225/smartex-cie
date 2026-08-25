@@ -65,7 +65,7 @@ class RechargeOrchestratorIdempotencyTest {
         CommandDispatcher commandDispatcher = new CommandDispatcher(finalizer);
 
         orchestrator = new RechargeOrchestrator(rechargeRepository, commandRepository, deviceService,
-                commandPublisher, commandDispatcher, auditService, props);
+                commandDispatcher, auditService, props);
 
         when(rechargeRepository.save(any(Recharge.class))).thenAnswer(inv -> inv.getArgument(0));
         when(commandRepository.save(any(MeterCommand.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -152,6 +152,58 @@ class RechargeOrchestratorIdempotencyTest {
         assertThat(recharge.getStatus()).isEqualTo(RechargeStatus.COMMAND_REJECTED);
         verify(auditService).record(eq("corr-t05-ack"), anyString(), eq("COMMAND_REJECTED"),
                 anyString(), anyString(), eq("FAILED"), eq("TOKEN_REJECTED"), any());
+    }
+
+    @Test
+    void ackTimeout_republieAvecUneFenetreRenouveleeEtPasseRechargeEnCommandTimeout() {
+        // T07: un ACK TIMEOUT (déclenché soit par un ACK tardif, soit par
+        // CommandExpiryWatcher) doit relancer la commande avec un expiresAt frais
+        // (l'ancien est par définition déjà dépassé) plutôt que de la republier
+        // hors-fenêtre, et laisser la recharge en COMMAND_TIMEOUT (pas bloquée).
+        UUID rechargeId = UUID.randomUUID();
+        UUID commandId = UUID.randomUUID();
+        Instant staleExpiry = Instant.now().minusSeconds(5);
+
+        Recharge recharge = new Recharge(UUID.randomUUID(), "CIE-LAB-0001", "CUST-1",
+                new BigDecimal("2000"), "KEY-T07", "corr-t07");
+        MeterCommand command = new MeterCommand(rechargeId, "DONGLE-LAB-0001", "corr-t07", "hash", 1L, staleExpiry);
+
+        when(commandRepository.findById(commandId)).thenReturn(Optional.of(command));
+        when(rechargeRepository.findById(any())).thenReturn(Optional.of(recharge));
+        ArgumentCaptor<Instant> expiryCaptor = ArgumentCaptor.forClass(Instant.class);
+
+        orchestrator.handleAck(commandId, CommandStatus.TIMEOUT, "corr-t07-watcher");
+
+        assertThat(command.getRetryCount()).isEqualTo(1);
+        assertThat(recharge.getStatus()).isEqualTo(RechargeStatus.COMMAND_TIMEOUT);
+        verify(commandPublisher).publishTokenCommand(anyString(), any(), anyString(), anyString(), anyLong(),
+                expiryCaptor.capture(), any(BigDecimal.class));
+        assertThat(expiryCaptor.getValue()).isAfter(Instant.now());
+    }
+
+    @Test
+    void ackTimeoutApresMaxRetries_basculeEnFallback() {
+        // T07: après épuisement des tentatives, plus de republication -> fallback
+        // token visible (ALG-02 étape 8), la recharge ne doit jamais rester bloquée.
+        UUID rechargeId = UUID.randomUUID();
+        UUID commandId = UUID.randomUUID();
+
+        Recharge recharge = new Recharge(UUID.randomUUID(), "CIE-LAB-0001", "CUST-1",
+                new BigDecimal("2000"), "KEY-T07-MAX", "corr-t07-max");
+        MeterCommand command = new MeterCommand(rechargeId, "DONGLE-LAB-0001", "corr-t07-max", "hash", 1L,
+                Instant.now().minusSeconds(5));
+        command.incrementRetry();
+        command.incrementRetry();
+        command.incrementRetry(); // retryCount == MAX_RETRIES (3)
+
+        when(commandRepository.findById(commandId)).thenReturn(Optional.of(command));
+        when(rechargeRepository.findById(any())).thenReturn(Optional.of(recharge));
+
+        orchestrator.handleAck(commandId, CommandStatus.TIMEOUT, "corr-t07-max-watcher");
+
+        assertThat(recharge.getStatus()).isEqualTo(RechargeStatus.FALLBACK_TOKEN_SENT);
+        verify(commandPublisher, never()).publishTokenCommand(anyString(), any(), anyString(), anyString(),
+                anyLong(), any(Instant.class), any(BigDecimal.class));
     }
 
     private static long anyLong() {
