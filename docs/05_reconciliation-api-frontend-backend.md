@@ -119,10 +119,22 @@ nécessaire ici.
 
 ## 3. `GET /api/v1/meters/{id}/status`
 
+> **Mise à jour (branche `feature/telemetry-alg01`)** : ALG-01 est désormais implémenté côté
+> backend, dans une version **volontairement simplifiée** (pas de pondération saisonnière, pas
+> de profil par segment client, pas de notification automatique — voir Javadoc de
+> `ci.cie.smartprepaid.telemetry.service.CreditAutonomyService`). Le constat "trou de contrat
+> des deux côtés" ci-dessous reste vrai pour l'historique de ce document, mais `autonomyDays` et
+> `creditStatus` (renommé sur les 4 valeurs simplifiées `NORMAL/WARNING/CRITICAL/IMMEDIATE`, pas
+> les 5 valeurs `NORMAL/WATCH/LOW/CRITICAL/CUT_RISK` de docs/03) sont désormais réellement
+> calculés à partir de relevés persistés (`MeterReading`, alimentés par `TelemetryCollector`),
+> pas inventés. **`creditPercent` reste volontairement absent** — voir l'encadré en fin de
+> section, c'est le point à trancher avec le collègue frontend.
+
 **docs/03** : entrée `meterId` → sortie `onlineStatus, credit, lastReadingAt`.
 
 **Backend aujourd'hui** (`DeviceController`) :
-`meterId, deviceId, deviceStatus, lastSeen, onlineStatus, creditBalance, creditUnit`.
+`meterId, deviceId, deviceStatus, lastSeen, onlineStatus, creditBalance, creditUnit,
+autonomyDays, creditStatus, dataQuality`.
 
 **Frontend aujourd'hui** : attend `GET /api/v1/meters/{meterId}` (**sans** le suffixe
 `/status` !) retournant un objet `Meter` bien plus riche :
@@ -164,14 +176,41 @@ autonomyDays, lastHeartbeat, voltage, current, consumptionTodayKwh, location, al
 - Renommer/aligner sur `GET /api/v1/meters/{meterId}/status` (garder le suffixe backend,
   conforme à docs/03 — c'est le frontend qui devra s'aligner, pas l'inverse, puisque
   docs/03 fait référence ici).
-- Étendre la réponse backend avec `creditPercent` et `autonomyDays`, mais seulement une fois
-  ALG-01 réellement implémenté côté backend (pas de valeur calculée à la volée dans le
-  contrôleur) — sinon on expose un champ qui n'a pas de logique métier derrière.
+- ~~Étendre la réponse backend avec `creditPercent` et `autonomyDays`, mais seulement une fois
+  ALG-01 réellement implémenté côté backend~~ — **fait pour `autonomyDays`/`creditStatus`**
+  (voir encadré ci-dessus). `creditPercent` reste un point ouvert, voir ci-dessous.
 - Élargir `DeviceStatus` avec `WARNING`/`MAINTENANCE` **seulement si un besoin métier réel
   les justifie** (à confirmer : que signifierait "WARNING" pour un device qui n'a que
   online/offline aujourd'hui ?).
 - Décider explicitly si `voltage`/`current` doivent apparaître sur l'écran **client** ou
   rester réservés à un futur écran CIE — c'est une décision produit, pas technique.
+
+### Point ouvert : `creditPercent` (à trancher avec le collègue frontend)
+
+Le frontend (`Meter.creditPercent`) attend un pourcentage — utile pour une jauge visuelle
+(`CreditRing`, voir `frontend/src/pages/client/dashboard.tsx`). Le backend ne l'expose **pas** :
+dans un système **prépayé** (contrairement à une batterie ou un réservoir), il n'y a **aucun
+plafond naturel** contre lequel calculer un pourcentage — un client peut recharger n'importe
+quel montant, il n'existe pas de "100 %" intrinsèque. Inventer un plafond arbitraire côté
+backend (ex. un montant fixe) serait une fausse précision non justifiée par le domaine métier.
+
+Trois options possibles, à trancher en produit avant d'implémenter quoi que ce soit :
+1. **Basé sur le dernier montant rechargé** (`creditPercent = créditRestant / dernièreRecharge`)
+   — reflète "combien reste-t-il de ta dernière recharge", mais dépend fortement du montant
+   choisi par le client (un petit rechargement fait chuter le % vite, pas nécessairement un
+   signal d'urgence réel).
+2. **Plafond fixé par contrat/palier client** (ex. un montant standard par profil tarifaire) —
+   nécessite une donnée qui n'existe pas encore dans le modèle (`customer`/`meter` n'ont
+   aujourd'hui aucune notion de palier ou plafond contractuel).
+3. **Ne pas exposer de pourcentage du tout** côté backend, et laisser le frontend décider
+   localement comment représenter visuellement `autonomyDays`/`creditStatus` (ex. la jauge
+   `CreditRing` pourrait s'indexer sur `creditStatus` — NORMAL=vert plein, WARNING=orange,
+   etc. — plutôt que sur un pourcentage de crédit).
+
+Le workaround actuel du frontend (`CreditRing percent={Math.min(100, credit / 50000 * 100)}`,
+`dashboard.tsx`) est un plafond arbitraire de 50 000 FCFA codé en dur côté client — exactement
+le genre de valeur inventée que ce document cherche à éviter côté backend. À clarifier avec le
+collègue frontend avant de faire quoi que ce soit de plus élaboré des deux côtés.
 
 ---
 
@@ -395,7 +434,7 @@ nouveau service séparé.
 |---|---|---|---|---|
 | 1 | `POST /api/v1/recharges` | **Fort** (noms de champs identiques) | Aucun (pas d'appel réel) | Oui pour le support/recette ; non pour le flux client (voir webhook) |
 | 2 | `GET /api/v1/recharges/{id}` | Partiel (`finalStatus` ok, `paymentStatus` absent) | Aucun (attend `/history`, pas `/{id}`) | Non — ajouter `paymentStatus` d'abord |
-| 3 | `GET /api/v1/meters/{id}/status` | Partiel (`onlineStatus` ok, reste différent) | Faible (URL différente, objet bien plus riche) | Non — ALG-01 pas implémenté, enums incompatibles |
+| 3 | `GET /api/v1/meters/{id}/status` | Partiel (`onlineStatus` ok, reste différent) | Faible (URL différente, objet bien plus riche) | Partiel — ALG-01 simplifié désormais implémenté (`autonomyDays`/`creditStatus`), mais `creditPercent` reste un point ouvert (voir §3) et le frontend n'est pas encore branché sur ces champs |
 | 4 | `GET /api/v1/support/timeline` | **Fort** (chemin identique) | Faible (URL différente : `/dsi/audit`) | Oui côté backend ; frontend à réaligner sur ce chemin |
 | 5 | `POST /api/v1/commands/{id}/retry` | Non documenté (ni confirmé ni contredit) | Aucun (inconnu du frontend) | Backend ok tel quel ; à documenter dans docs/03 |
 | 6 | Heartbeat device | Faible (payload ALG-03 non transmis) | Sans objet (pas un appel frontend) | Non — payload à étendre si besoin réel de RSSI/batterie |

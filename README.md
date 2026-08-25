@@ -217,6 +217,62 @@ réponse du backend. La réponse doit lister, dans l'ordre chronologique, tous l
 curl http://localhost:8080/api/v1/meters/CIE-LAB-0001/status
 ```
 
+Depuis la branche `feature/telemetry-alg01`, la réponse inclut désormais `autonomyDays`,
+`creditStatus` (`NORMAL/WARNING/CRITICAL/IMMEDIATE`) et `dataQuality` (`REAL/FALLBACK`) — voir
+§Télémétrie ci-dessous. Pas de `creditPercent` : voir le point ouvert dans
+`docs/05_reconciliation-api-frontend-backend.md` §3.
+
+## Télémétrie et autonomie de crédit (ALG-01 simplifié)
+
+Domaine `backend/poc-backend/.../telemetry` : `TelemetryCollector` (job planifié) interroge
+périodiquement `meterAdapter.readCredit()` pour chaque device connu et enregistre un relevé
+(`MeterReading`) ; `CreditAutonomyService` reconstruit la consommation nette entre deux relevés
+en excluant les recharges appliquées dans l'intervalle (voir Javadoc de la classe pour le détail
+de l'approche), fait une moyenne pondérée par la durée sur la fenêtre glissante (7 jours par
+défaut), et classe le résultat. Historique insuffisant → `dataQuality=FALLBACK` (valeur de
+secours configurée, jamais une erreur ni une valeur inventée sans le dire).
+
+Pour que l'autonomie ait un sens à démontrer, `mock-dongle` simule désormais aussi une
+**consommation** (le crédit ne faisait auparavant qu'augmenter via les recharges) : une boucle
+d'arrière-plan décrémente `credit_fcfa` à un taux configurable
+(`CONSUMPTION_RATE_FCFA_PER_HOUR`, défaut 150 FCFA/h, plancher à 0) — **simulation de démo
+explicite, pas un comportement de compteur réel** (voir `dongle.py`).
+
+Variables d'environnement (défauts en `application.yml` / `dongle.py`, surchargeables sans
+toucher au code, même convention que `MQTT_COMMAND_TTL_SECONDS`) :
+
+| Variable | Service | Rôle | Défaut |
+|---|---|---|---|
+| `TELEMETRY_COLLECTION_INTERVAL_SECONDS` | backend | Intervalle entre deux relevés | 300 |
+| `TELEMETRY_LOOKBACK_DAYS` | backend | Fenêtre glissante pour la moyenne | 7 |
+| `TELEMETRY_MIN_READINGS_FOR_REAL` | backend | Seuil relevés avant `dataQuality=REAL` | 3 |
+| `TELEMETRY_FALLBACK_DAILY_CONSUMPTION_FCFA` | backend | Consommation de secours si historique insuffisant | 500 |
+| `CONSUMPTION_RATE_FCFA_PER_HOUR` | mock-dongle | Taux de consommation simulée | 150 |
+| `CONSUMPTION_TICK_SECONDS` | mock-dongle | Cadence de décrémentation | 10 |
+
+**Validation réelle effectuée** (`docker compose`, paramètres accélérés pour observer en
+quelques minutes plutôt qu'en jours réels) :
+
+```bash
+TELEMETRY_COLLECTION_INTERVAL_SECONDS=8 CONSUMPTION_RATE_FCFA_PER_HOUR=300 CONSUMPTION_TICK_SECONDS=2 \
+  docker compose up -d backend mock-dongle
+```
+
+Résultat observé : `dataQuality` passe de `FALLBACK` à `REAL` dès que 3 relevés sont
+disponibles (~24s à cet intervalle accéléré), et `creditStatus` est bien redescendu de
+`WARNING` à `IMMEDIATE` (en traversant `CRITICAL`) à mesure que le crédit simulé diminuait —
+confirmant que la classification réagit correctement au franchissement des seuils. **Note
+méthodologique** : la consommation journalière reconstruite extrapole toujours un taux réel
+observé sur 24h (`dailyRate = tauxHoraireRéel × 24`) — avec un taux d'accélération réaliste
+(quelques centaines de FCFA/h), un seuil à plusieurs jours d'autonomie (ex. `NORMAL`→`WARNING`
+à 7 jours) reste physiquement long à traverser en temps réel, même accéléré ; le taux utilisé
+ci-dessus est donc délibérément non représentatif d'une consommation réelle, uniquement choisi
+pour rendre la traversée de seuil observable en quelques minutes de test.
+
+Tests unitaires : `CreditAutonomyServiceTest` (reconstruction avec/sans recharge dans
+l'intervalle, bascule `FALLBACK`→`REAL`, crédit nul/négatif) ; `test_dongle.py` (décrémentation,
+plancher à 0, arrondi, persistance).
+
 ## Sécurité MQTT (mTLS + ACL par device)
 
 Conformément à docs/02_developer-pack-poc.md §10_MQTT / §12_Securite, le broker
@@ -375,14 +431,14 @@ redélivré".
 
 ## Lancer les tests
 
-### Backend Java (nécessite un accès réseau à Maven Central — pas fourni dans ce sandbox)
+### Backend Java
 
 ```bash
 cd backend/poc-backend
 mvn test
 ```
 
-### Simulateurs Python (déjà exécutés et validés dans ce sandbox)
+### Simulateurs Python
 
 ```bash
 cd simulators/payment-simulator && pip install -r requirements.txt pytest && pytest -v
@@ -401,8 +457,9 @@ cd simulators/mock-dongle && pip install -r requirements.txt pytest && pytest -v
 | meter-adapter (interface + MockMeterAdapter HTTP) | ✅ Code complet |
 | Migrations DB (schéma + seed) | ✅ Code complet |
 | payment-simulator (Python) | ✅ Testé (4/4 tests passent) |
-| mock-dongle (Python, MQTT + HTTP) | ✅ Testé (3/3 tests passent) |
-| Backend Java : compilation/tests réels | ✅ `mvn test` exécuté, build Docker validé |
+| mock-dongle (Python, MQTT + HTTP + persistance + consommation simulée) | ✅ Testé (11/11 tests passent) |
+| Backend Java : compilation/tests réels | ✅ `mvn test` exécuté (33/33 tests), build Docker validé |
+| telemetry/ALG-01 simplifié (relevés, reconstruction consommation, autonomie) | ✅ Implémenté et validé end-to-end via `docker compose` (voir §Télémétrie) — `creditPercent` volontairement omis, point ouvert avec le frontend |
 | Sécurité: mTLS, ACL MQTT par device (certificats de labo) | ✅ Implémenté (PKI de laboratoire — PKI CIE réelle restant à faire, voir dossier de recette) |
 | customer/auth (inscription, connexion OTP-only, JWT) | ✅ Implémenté et testé end-to-end (voir §Authentification) — SMS mocké (log console), pas d'intégration réelle |
 | Endpoints protégés par JWT (recharges, commandes/retry, audit, support/timeline) | ✅ Implémenté (Spring Security, profil non conditionné — actif dans tous les environnements) |
