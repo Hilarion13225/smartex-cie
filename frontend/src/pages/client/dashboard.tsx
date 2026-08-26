@@ -80,7 +80,7 @@ export function ClientDashboard() {
             <div className="rounded-2xl bg-gradient-to-br from-orange-500 via-orange-400 to-green-500 text-white p-5 flex items-center justify-between shadow-lg shadow-orange-500/30 animate-slide-up">
               <div>
                 <p className="text-xs text-white font-semibold flex items-center gap-1.5">
-                  ⚡ Crédit restant
+                  Crédit restant
                   <span className="inline-flex items-center gap-1 text-[9px] font-normal opacity-80" title="Mis à jour automatiquement">
                     <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                     en direct
@@ -158,7 +158,7 @@ export function MeterPage() {
             <div className="p-5 rounded-2xl bg-gradient-to-br from-orange-50 via-white to-green-50 border-2 border-orange-300 animate-slide-up">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-bold text-orange-700 text-lg">⚡ {meter.meterId}</p>
+                  <p className="font-bold text-orange-700 text-lg">{meter.meterId}</p>
                   <p className="text-xs text-green-600">{meter.location} · {meter.deviceId}</p>
                 </div>
                 <MeterStatusBadge status={meter.status} />
