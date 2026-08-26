@@ -113,7 +113,7 @@ export function AutoRechargePage() {
 
 export function ProfilePage() {
   const navigate = useNavigate()
-  const { customer, setCustomer } = useAppStore()
+  const { customer, clearSession } = useAppStore()
   const items = [
     { label: '🔔 Alertes & notifications', to: '/app/alertes' },
     { label: '🔁 Auto-recharge', to: '/app/auto-recharge' },
@@ -141,7 +141,7 @@ export function ProfilePage() {
             </button>
           ))}
         </Card>
-        <Button variant="secondary" className="w-full" onClick={() => { setCustomer(null); navigate('/') }}>Se déconnecter</Button>
+        <Button variant="secondary" className="w-full" onClick={() => { clearSession(); navigate('/') }}>Se déconnecter</Button>
         <p className="text-[10px] text-gray-400 text-center">PoC — profil et données simulés (MOCK)</p>
       </div>
     </div>

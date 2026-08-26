@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { Navigate, NavLink, Outlet } from 'react-router-dom'
+import { Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../stores/app'
 
 export interface PortalNavItem { to: string; label: string; icon: string; end?: boolean }
 
 export default function PortalLayout({ title, items, accent = 'CIE' }: { title: string; items: PortalNavItem[]; accent?: string }) {
+  const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const token = useAppStore((s) => s.token)
+  const clearSession = useAppStore((s) => s.clearSession)
 
   // Même garde que ClientLayout (voir sa note) : /cie/** et /admin/** restaient accessibles
   // en tapant l'URL sans être connecté.
@@ -41,6 +43,13 @@ export default function PortalLayout({ title, items, accent = 'CIE' }: { title: 
             </NavLink>
           ))}
         </nav>
+        <button
+          onClick={() => { clearSession(); navigate('/') }}
+          className="flex items-center gap-3 px-5 py-3 text-sm text-gray-300 hover:bg-white/5 hover:text-white border-t border-white/10 mr-4 rounded-r-full transition"
+        >
+          <span>🚪</span>
+          <span className="hidden sm:inline">Se déconnecter</span>
+        </button>
       </aside>
 
       {/* Sidebar overlay on mobile */}
