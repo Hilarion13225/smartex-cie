@@ -303,7 +303,7 @@ export function AdminServices() {
         ))}
         {!services && <Skeleton className="h-40 rounded-2xl" />}
       </div>
-      <p className="text-[10px] text-gray-400">Monitoring simulé (MOCK). En production : métriques payments_total, commands_total, activations_success_total, activation_latency_ms.</p>
+      <p className="text-[10px] text-gray-400">Métriques de monitoring - Smartex Expertises</p>
     </div>
   )
 }

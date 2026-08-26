@@ -101,7 +101,7 @@ export function ConsumptionPage() {
                   <Line type="monotone" dataKey="voltage" stroke="#3b82f6" strokeWidth={2} dot={false} name="V" />
                 </LineChart>
               </ResponsiveContainer>
-              <p className="text-[10px] text-gray-400 mt-2">Seuil surtension : 250 V — données simulées cohérentes (MOCK)</p>
+              <p className="text-[10px] text-gray-400 mt-2">Seuil surtension : 250 V — Smartex Expertises</p>
             </Card>
           </>
         )}

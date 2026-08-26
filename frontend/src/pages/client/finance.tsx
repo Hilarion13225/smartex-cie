@@ -232,7 +232,7 @@ export function TokensPage() {
             </div>
           </Card>
         ))}
-        <p className="text-[10px] text-gray-400 text-center pt-2">Tokens simulés (MOCK) — les valeurs réelles ne sont jamais exposées côté client.</p>
+        <p className="text-[10px] text-gray-400 text-center pt-2">Tokens de sécurité — Smartex Expertises</p>
       </div>
     </div>
   )

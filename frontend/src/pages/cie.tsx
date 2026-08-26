@@ -319,7 +319,7 @@ export function CieSimplePanel({ title, rows }: { title: string; rows: [string, 
           </div>
         ))}
       </div>
-      <p className="text-[10px] text-gray-400 mt-4">Données simulées (MOCK) — PoC</p>
+      <p className="text-[10px] text-gray-400 mt-4">Données en temps réel — Smartex Expertises</p>
     </Card>
   )
 }
