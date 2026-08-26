@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { api } from '../services/api'
 import { ApiError } from '../services/httpClient'
+import { useAdminAlerts } from '../hooks/useAdminAlerts'
 import type { AuditEvent, Device, DsiUser, MeterRegistryEntry, RechargeDetail, ServiceHealth, Token } from '../types'
 import { fmtFcfa } from '../types'
-import { Badge, Button, Card, KpiCard, MeterStatusBadge, RechargeStatusBadge, Skeleton } from '../components/ui'
+import { Badge, Button, Card, KpiCard, MeterStatusBadge, RechargeStatusBadge, SeverityDot, Skeleton } from '../components/ui'
 
 const ROLES: DsiUser['role'][] = ['CLIENT', 'CIE_OPERATOR', 'CIE_ADMIN', 'DSI_ADMIN']
 
@@ -563,6 +564,40 @@ export function AdminServices() {
         {!services && <Skeleton className="h-40 rounded-2xl" />}
       </div>
       <p className="text-[10px] text-gray-400">Monitoring simulé (MOCK). En production : métriques payments_total, commands_total, activations_success_total, activation_latency_ms.</p>
+    </div>
+  )
+}
+
+// Alertes admin/CIE (cloche de PortalLayout) : entièrement dérivées de données réelles déjà
+// exposées (voir useAdminAlerts) -- pas de "lu/non lu" ni de suppression, l'état est
+// recalculé en direct à chaque rafraîchissement, pas une liste persistée.
+export function AdminAlertsPage() {
+  const alerts = useAdminAlerts()
+  const typeLabel: Record<string, string> = {
+    LOW_CREDIT: 'Compteur en crédit faible',
+    DEVICE_OFFLINE: 'Device hors-ligne',
+    ACCOUNT_SUSPENDED: 'Compte suspendu',
+    NEW_REGISTRATION: 'Nouvelle inscription',
+  }
+  return (
+    <div className="space-y-2.5">
+      <p className="text-xs text-gray-400 mb-2">
+        Dérivé en direct du parc de compteurs, des devices et des comptes — pas une liste
+        persistée, recalculée à chaque rafraîchissement (voir useAdminAlerts).
+      </p>
+      {alerts.length === 0 && (
+        <Card className="p-6 text-center text-sm text-gray-400">Aucune alerte pour le moment.</Card>
+      )}
+      {alerts.map((a) => (
+        <Card key={a.alertId} className="p-4 flex items-start gap-3">
+          <SeverityDot severity={a.severity} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-800">{typeLabel[a.type] ?? a.type}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{a.message}</p>
+            <p className="text-[10px] text-gray-400 mt-1">{new Date(a.createdAt).toLocaleString('fr-FR')}</p>
+          </div>
+        </Card>
+      ))}
     </div>
   )
 }

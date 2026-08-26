@@ -176,6 +176,7 @@ class MockApiAdapter implements ApiAdapter {
     const u: DsiUser = {
       userId: `USR-${Date.now()}`, name: displayName, email: email ?? '', phone: phoneNumber,
       role: role as DsiUser['role'], status: 'ACTIVE', lastLogin: '', meterId: '', contractId: '',
+      createdAt: new Date().toISOString(),
     }
     mockUsersState = [u, ...mockUsersState]
     return u

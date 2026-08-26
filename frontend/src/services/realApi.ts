@@ -61,6 +61,7 @@ function mapDsiUser(c: BackendCustomer): DsiUser {
     lastLogin: c.lastLoginAt ?? '',
     meterId: c.meterId ?? '',
     contractId: c.contractId ?? '',
+    createdAt: c.createdAt,
   }
 }
 

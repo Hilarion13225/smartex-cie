@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAppStore } from '../stores/app'
+import { useAdminAlerts } from '../hooks/useAdminAlerts'
 
 export interface PortalNavItem { to: string; label: string; icon: string; end?: boolean }
 
-export default function PortalLayout({ title, items, accent = 'CIE' }: { title: string; items: PortalNavItem[]; accent?: string }) {
+export default function PortalLayout({ title, items, accent = 'CIE', alertsPath }:
+    { title: string; items: PortalNavItem[]; accent?: string; alertsPath: string }) {
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const token = useAppStore((s) => s.token)
   const clearSession = useAppStore((s) => s.clearSession)
+  const alerts = useAdminAlerts()
 
   // Même garde que ClientLayout (voir sa note) : /cie/** et /admin/** restaient accessibles
   // en tapant l'URL sans être connecté.
@@ -71,7 +74,14 @@ export default function PortalLayout({ title, items, accent = 'CIE' }: { title: 
           </button>
           <h1 className="font-bold text-gray-900 text-lg lg:text-xl">{title}</h1>
           <div className="flex items-center gap-2 lg:gap-4">
-            <span className="text-gray-400">🔔</span>
+            <NavLink to={alertsPath} className="relative text-gray-400 hover:text-cie-600 text-xl inline-block" title="Alertes">
+              🔔
+              {alerts.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {alerts.length}
+                </span>
+              )}
+            </NavLink>
             <div className="hidden sm:flex items-center gap-2">
               <span className="text-xs lg:text-sm text-gray-600">Admin</span>
               <span className="w-7 h-7 lg:w-8 lg:h-8 rounded-full bg-cie-100 text-cie-700 flex items-center justify-center text-xs lg:text-sm font-bold">A</span>

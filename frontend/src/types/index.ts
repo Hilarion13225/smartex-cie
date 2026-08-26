@@ -183,6 +183,7 @@ export interface DsiUser {
   lastLogin: string
   meterId: string
   contractId: string
+  createdAt: string
 }
 
 export interface Device {

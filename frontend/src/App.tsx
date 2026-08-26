@@ -18,13 +18,14 @@ import {
   CieDashboard, CieFraude, CieIncidents, CieMeterDetail, CieMeters,
   CieParametres, CieQualite, CieRapports, CieRecharges, CieTelecom,
 } from './pages/cie'
-import { AdminAudit, AdminDevices, AdminMeters, AdminRechargeLookup, AdminServices, AdminTokens, AdminUsers } from './pages/admin'
+import { AdminAlertsPage, AdminAudit, AdminDevices, AdminMeters, AdminRechargeLookup, AdminServices, AdminTokens, AdminUsers } from './pages/admin'
 
 const cieNav: PortalNavItem[] = [
   { to: '/cie', label: 'Tableau de bord', icon: '📊', end: true },
   { to: '/cie/compteurs', label: 'Compteurs', icon: '⚡' },
   { to: '/cie/recharges', label: 'Recharges', icon: '💳' },
   { to: '/cie/incidents', label: 'Incidents', icon: '🚨' },
+  { to: '/cie/alertes', label: 'Alertes', icon: '🔔' },
   { to: '/cie/telecom', label: 'Télécom', icon: '📡' },
   { to: '/cie/fraude', label: 'Fraude / anomalies', icon: '🕵️' },
   { to: '/cie/qualite', label: 'Qualité des données', icon: '🧪' },
@@ -37,6 +38,7 @@ const adminNav: PortalNavItem[] = [
   { to: '/admin/compteurs', label: 'Registre des compteurs', icon: '⚡' },
   { to: '/admin/devices', label: 'Devices & credentials', icon: '🔌' },
   { to: '/admin/tokens', label: 'Tokens', icon: '🎟️' },
+  { to: '/admin/alertes', label: 'Alertes', icon: '🔔' },
   { to: '/admin/audit', label: 'Audit', icon: '🧾' },
   { to: '/admin/services', label: 'Monitoring services', icon: '🖥️' },
 ]
@@ -74,12 +76,13 @@ function AppRoutes() {
         </Route>
 
         {/* Espace CIE (supervision) */}
-        <Route path="/cie" element={<PortalLayout title="Supervision du parc" items={cieNav} accent="CIE Supervision" />}>
+        <Route path="/cie" element={<PortalLayout title="Supervision du parc" items={cieNav} accent="CIE Supervision" alertsPath="/cie/alertes" />}>
           <Route index element={<CieDashboard />} />
           <Route path="compteurs" element={<CieMeters />} />
           <Route path="compteurs/:meterId" element={<CieMeterDetail />} />
           <Route path="recharges" element={<CieRecharges />} />
           <Route path="incidents" element={<CieIncidents />} />
+          <Route path="alertes" element={<AdminAlertsPage />} />
           <Route path="telecom" element={<CieTelecom />} />
           <Route path="fraude" element={<CieFraude />} />
           <Route path="qualite" element={<CieQualite />} />
@@ -88,11 +91,12 @@ function AppRoutes() {
         </Route>
 
         {/* Espace Admin (technique) */}
-        <Route path="/admin" element={<PortalLayout title="Administration" items={adminNav} accent="CIE Admin" />}>
+        <Route path="/admin" element={<PortalLayout title="Administration" items={adminNav} accent="CIE Admin" alertsPath="/admin/alertes" />}>
           <Route index element={<AdminUsers />} />
           <Route path="compteurs" element={<AdminMeters />} />
           <Route path="devices" element={<AdminDevices />} />
           <Route path="tokens" element={<AdminTokens />} />
+          <Route path="alertes" element={<AdminAlertsPage />} />
           <Route path="audit" element={<div className="space-y-4"><AdminRechargeLookup /><AdminAudit /></div>} />
           <Route path="services" element={<AdminServices />} />
         </Route>
