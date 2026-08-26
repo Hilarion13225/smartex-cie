@@ -398,7 +398,7 @@ export function CieRapports() {
         {rows.map(([name, sub]) => (
           <div key={name} className="flex items-center justify-between border border-gray-100 rounded-xl px-4 py-3 text-sm">
             <div><p className="font-medium">{name}</p><p className="text-[11px] text-gray-400">{sub}</p></div>
-            <button className="text-xs text-cie-600 font-semibold">Télécharger (simulé)</button>
+            <button className="text-xs text-cie-600 font-semibold">Télécharger</button>
           </div>
         ))}
       </div>
