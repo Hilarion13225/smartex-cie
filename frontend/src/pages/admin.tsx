@@ -188,7 +188,7 @@ export function AdminUsers() {
 
       <Card className="overflow-x-auto">
         {!users ? <Skeleton className="h-64 m-4" /> : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-180 text-sm">
             <thead>
               <tr className="text-xs text-gray-400 text-left border-b border-gray-100">
                 <th className="px-4 py-3">Utilisateur</th><th>Email</th><th>Rôle</th><th>Statut</th><th>Compteur</th><th>Dernière connexion</th>
@@ -199,21 +199,21 @@ export function AdminUsers() {
                 <tr key={u.userId}
                     onClick={() => setSelectedId(u.userId === selectedId ? null : u.userId)}
                     className={`border-b border-gray-50 hover:bg-gray-50/50 cursor-pointer ${u.userId === selectedId ? 'bg-cie-50/60' : ''}`}>
-                  <td className="px-4 py-3"><p className="font-semibold">{u.name}</p><p className="text-[11px] text-gray-400">{u.userId} · {u.phone}</p></td>
-                  <td>{u.email || '—'}</td>
+                  <td className="px-4 py-3"><p className="font-semibold">{u.name}</p><p className="text-[11px] text-gray-400 whitespace-nowrap">{u.userId} · {u.phone}</p></td>
+                  <td className="whitespace-nowrap">{u.email || '—'}</td>
                   <td><Badge color={roleColor[u.role]}>{u.role}</Badge></td>
                   <td><Badge color={u.status === 'ACTIVE' ? 'green' : 'red'}>{u.status}</Badge></td>
-                  <td className="font-mono text-xs">{u.meterId || '—'}</td>
-                  <td className="text-xs text-gray-500">{u.lastLogin ? new Date(u.lastLogin).toLocaleString('fr-FR') : '—'}</td>
+                  <td className="font-mono text-xs whitespace-nowrap">{u.meterId || '—'}</td>
+                  <td className="text-xs text-gray-500 whitespace-nowrap">{u.lastLogin ? new Date(u.lastLogin).toLocaleString('fr-FR') : '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </Card>
-      <Card className="p-5">
+      <Card className="p-5 overflow-x-auto">
         <p className="font-semibold text-sm mb-3">Matrice des rôles (RBAC)</p>
-        <table className="w-full text-xs">
+        <table className="w-full min-w-130 text-xs">
           <thead>
             <tr className="text-gray-400 text-left border-b border-gray-100">
               <th className="py-2">Permission</th><th>CLIENT</th><th>CIE_OPERATOR</th><th>CIE_ADMIN</th><th>DSI_ADMIN</th>
@@ -301,7 +301,7 @@ export function AdminMeters() {
 
       <Card className="overflow-x-auto">
         {!meters ? <Skeleton className="h-64 m-4" /> : (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-160 text-sm">
             <thead>
               <tr className="text-xs text-gray-400 text-left border-b border-gray-100">
                 <th className="px-4 py-3">Compteur</th><th>Libellé</th><th>Dongle installé</th>
@@ -311,11 +311,11 @@ export function AdminMeters() {
             <tbody>
               {meters.map((m) => (
                 <tr key={m.meterId} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-3 font-semibold font-mono">{m.meterId}</td>
-                  <td>{m.label ?? '—'}</td>
+                  <td className="px-4 py-3 font-semibold font-mono whitespace-nowrap">{m.meterId}</td>
+                  <td className="whitespace-nowrap">{m.label ?? '—'}</td>
                   <td><Badge color={m.hasDevice ? 'green' : 'orange'}>{m.hasDevice ? 'Oui' : 'Non'}</Badge></td>
-                  <td className="font-mono text-xs">{m.claimedByCustomerId ?? '—'}</td>
-                  <td className="text-xs text-gray-500">{new Date(m.createdAt).toLocaleString('fr-FR')}</td>
+                  <td className="font-mono text-xs whitespace-nowrap">{m.claimedByCustomerId ?? '—'}</td>
+                  <td className="text-xs text-gray-500 whitespace-nowrap">{new Date(m.createdAt).toLocaleString('fr-FR')}</td>
                 </tr>
               ))}
               {meters.length === 0 && (
@@ -336,7 +336,7 @@ export function AdminDevices() {
   return (
     <Card className="overflow-x-auto">
       {!devices ? <Skeleton className="h-64 m-4" /> : (
-        <table className="w-full text-sm">
+        <table className="w-full min-w-180 text-sm">
           <thead>
             <tr className="text-xs text-gray-400 text-left border-b border-gray-100">
               <th className="px-4 py-3">Dongle</th><th>Compteur</th><th>Firmware</th><th>Statut</th><th>Credential mTLS</th><th>Vu pour la dernière fois</th>
@@ -345,12 +345,12 @@ export function AdminDevices() {
           <tbody>
             {devices.map((d) => (
               <tr key={d.deviceId} className="border-b border-gray-50 hover:bg-gray-50/50">
-                <td className="px-4 py-3 font-semibold">{d.deviceId}</td>
-                <td>{d.meterId}</td>
-                <td className="font-mono text-xs">{d.firmware}</td>
+                <td className="px-4 py-3 font-semibold whitespace-nowrap">{d.deviceId}</td>
+                <td className="whitespace-nowrap">{d.meterId}</td>
+                <td className="font-mono text-xs whitespace-nowrap">{d.firmware}</td>
                 <td><MeterStatusBadge status={d.status} /></td>
                 <td><Badge color={credColor[d.credentialStatus]}>{d.credentialStatus}</Badge></td>
-                <td className="text-xs text-gray-500">{new Date(d.lastSeen).toLocaleString('fr-FR')}</td>
+                <td className="text-xs text-gray-500 whitespace-nowrap">{new Date(d.lastSeen).toLocaleString('fr-FR')}</td>
               </tr>
             ))}
           </tbody>
@@ -366,7 +366,7 @@ export function AdminTokens() {
   return (
     <Card className="overflow-x-auto">
       {!tokens ? <Skeleton className="h-64 m-4" /> : (
-        <table className="w-full text-sm">
+        <table className="w-full min-w-180 text-sm">
           <thead>
             <tr className="text-xs text-gray-400 text-left border-b border-gray-100">
               <th className="px-4 py-3">Token</th><th>Compteur</th><th>Montant</th><th>Statut</th><th>Transaction</th><th>Valeur (masquée)</th>
@@ -375,12 +375,12 @@ export function AdminTokens() {
           <tbody>
             {tokens.map((t) => (
               <tr key={t.tokenId} className="border-b border-gray-50 hover:bg-gray-50/50">
-                <td className="px-4 py-3 font-semibold text-cie-700">{t.tokenId}</td>
-                <td>{t.meterId}</td>
-                <td className="font-semibold">{fmtFcfa(t.amount)}</td>
+                <td className="px-4 py-3 font-semibold text-cie-700 whitespace-nowrap">{t.tokenId}</td>
+                <td className="whitespace-nowrap">{t.meterId}</td>
+                <td className="font-semibold whitespace-nowrap">{fmtFcfa(t.amount)}</td>
                 <td><RechargeStatusBadge status={t.status} /></td>
-                <td className="text-xs">{t.transactionId}</td>
-                <td className="font-mono text-xs text-gray-400">•••• •••• •••• ••••</td>
+                <td className="text-xs whitespace-nowrap">{t.transactionId}</td>
+                <td className="font-mono text-xs text-gray-400 whitespace-nowrap">•••• •••• •••• ••••</td>
               </tr>
             ))}
           </tbody>

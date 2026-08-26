@@ -39,7 +39,7 @@ export default function PortalLayout({ title, items, accent = 'CIE' }: { title: 
               }
             >
               <span>{i.icon}</span>
-              <span className="hidden sm:inline">{i.label}</span>
+              <span>{i.label}</span>
             </NavLink>
           ))}
         </nav>
@@ -48,7 +48,7 @@ export default function PortalLayout({ title, items, accent = 'CIE' }: { title: 
           className="flex items-center gap-3 px-5 py-3 text-sm text-gray-300 hover:bg-white/5 hover:text-white border-t border-white/10 mr-4 rounded-r-full transition"
         >
           <span>🚪</span>
-          <span className="hidden sm:inline">Se déconnecter</span>
+          <span>Se déconnecter</span>
         </button>
       </aside>
 
