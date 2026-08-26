@@ -14,7 +14,7 @@ export function PaymentErrorPage() {
 
   return (
     <div className="min-h-full max-w-md mx-auto bg-white flex flex-col">
-      <PageHeader title="Erreur de paiement" onBack={() => navigate('/app')} />
+      <PageHeader title="Erreur de paiement" onBack={() => navigate(-1)} />
       <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-6">
         <span className="text-6xl">❌</span>
         <div>

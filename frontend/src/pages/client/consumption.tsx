@@ -28,7 +28,7 @@ export function ConsumptionPage() {
 
   return (
     <div>
-      <PageHeader title="Consommation" onBack={() => navigate('/app')} />
+      <PageHeader title="Consommation" onBack={() => navigate(-1)} />
       <div className="px-5 py-4 space-y-4">
         <div className="flex gap-2 overflow-x-auto pb-1">
           {periods.map((p) => (

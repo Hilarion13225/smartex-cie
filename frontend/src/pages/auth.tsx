@@ -8,7 +8,7 @@ import { Button, FullScreenLoader, PageHeader } from '../components/ui'
 export function Welcome() {
   const navigate = useNavigate()
   const [mode, setMode] = useState<'home' | 'login' | 'register'>('home')
-  const [phone, setPhone] = useState('0700000001')
+  const [phone, setPhone] = useState('')
   const [loading, setLoading] = useState(false)
   const setPendingPhone = useAppStore((s) => s.setPendingPhone)
   const notify = useAppStore((s) => s.notify)
@@ -92,14 +92,14 @@ export function Register({ onBack }: { onBack: () => void }) {
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
-    lastName: 'TOLO',
-    firstName: 'Marie',
-    phone: '07 12 34 56 78',
-    email: 'marie.tolo@email.com',
-    meterId: '58901234567',
-    contractId: '1234567890',
-    password: 'Test@1234',
-    confirm: 'Test@1234',
+    lastName: '',
+    firstName: '',
+    phone: '',
+    email: '',
+    meterId: '',
+    contractId: '',
+    password: '',
+    confirm: '',
   })
   const notify = useAppStore((s) => s.notify)
   const setPendingPhone = useAppStore((s) => s.setPendingPhone)

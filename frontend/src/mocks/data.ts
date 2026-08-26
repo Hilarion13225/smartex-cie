@@ -99,12 +99,11 @@ export const mockTokens: Token[] = mockTransactions
   }))
 
 export const mockAlerts: Alert[] = [
-  { alertId: 'AL-001', meterId: 'MTR-458921', type: 'LOW_CREDIT', severity: 'WARNING', message: 'Crédit faible — votre crédit est inférieur à 10 000 FCFA', createdAt: '2026-08-24T22:10:00Z', read: false },
-  { alertId: 'AL-002', meterId: 'MTR-458921', type: 'RECHARGE_SUCCESS', severity: 'SUCCESS', message: 'Recharge de 5 000 FCFA appliquée avec succès', createdAt: '2026-08-24T23:22:00Z', read: false },
-  { alertId: 'AL-003', meterId: 'MTR-458921', type: 'OVERVOLTAGE', severity: 'CRITICAL', message: 'Surtension détectée (252 V) — vérifiez vos équipements', createdAt: '2026-08-23T10:24:00Z', read: true },
-  { alertId: 'AL-004', meterId: 'MTR-458921', type: 'METER_OFFLINE', severity: 'WARNING', message: 'Compteur hors ligne pendant 12 minutes', createdAt: '2026-08-22T09:15:00Z', read: true },
-  { alertId: 'AL-005', meterId: 'MTR-458921', type: 'PAYMENT_FAILED', severity: 'CRITICAL', message: 'Paiement Wave de 2 500 FCFA échoué — veuillez réessayer', createdAt: '2026-08-21T18:40:00Z', read: true },
-  { alertId: 'AL-006', meterId: 'MTR-458921', type: 'INJECTION_FAILED', severity: 'WARNING', message: 'Injection automatique échouée — token disponible en saisie manuelle', createdAt: '2026-08-20T08:32:00Z', read: true },
+  { alertId: 'AL-001', meterId: 'MTR-458921', type: 'LOW_CREDIT', severity: 'WARNING', message: 'Crédit faible: moins de 10 000 FCFA', createdAt: '2026-08-24T22:10:00Z', read: false },
+  { alertId: 'AL-002', meterId: 'MTR-458921', type: 'RECHARGE_SUCCESS', severity: 'SUCCESS', message: '5 000 FCFA rechargeables avec succès', createdAt: '2026-08-24T23:22:00Z', read: false },
+  { alertId: 'AL-003', meterId: 'MTR-458921', type: 'OVERVOLTAGE', severity: 'CRITICAL', message: 'Surtension détectée: 252V', createdAt: '2026-08-23T10:24:00Z', read: true },
+  { alertId: 'AL-004', meterId: 'MTR-458921', type: 'METER_OFFLINE', severity: 'WARNING', message: 'Compteur hors ligne', createdAt: '2026-08-22T09:15:00Z', read: true },
+  { alertId: 'AL-005', meterId: 'MTR-458921', type: 'PAYMENT_FAILED', severity: 'CRITICAL', message: 'Paiement Wave échoué', createdAt: '2026-08-21T18:40:00Z', read: true },
 ]
 
 export const mockIncidents: Incident[] = [

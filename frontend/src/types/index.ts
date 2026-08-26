@@ -24,6 +24,7 @@ export interface Customer {
   email: string
   meterId: string
   contractId: string
+  gender?: string
   createdAt: string
 }
 

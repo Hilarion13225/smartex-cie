@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { Navigate, NavLink, Outlet } from 'react-router-dom'
 import { useAppStore } from '../stores/app'
+import { IconBell } from '../components/icons'
 
-export interface PortalNavItem { to: string; label: string; icon: string; end?: boolean }
+export interface PortalNavItem { to: string; label: string; icon: string | ReactNode; end?: boolean }
 
 export default function PortalLayout({ title, items, accent = 'CIE' }: { title: string; items: PortalNavItem[]; accent?: string }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -62,7 +64,7 @@ export default function PortalLayout({ title, items, accent = 'CIE' }: { title: 
           </button>
           <h1 className="font-bold text-gray-900 text-lg lg:text-xl">{title}</h1>
           <div className="flex items-center gap-2 lg:gap-4">
-            <span className="text-gray-400">🔔</span>
+            <span className="text-gray-400 w-5 h-5"><IconBell /></span>
             <div className="hidden sm:flex items-center gap-2">
               <span className="text-xs lg:text-sm text-gray-600">Admin</span>
               <span className="w-7 h-7 lg:w-8 lg:h-8 rounded-full bg-cie-100 text-cie-700 flex items-center justify-center text-xs lg:text-sm font-bold">A</span>

@@ -35,7 +35,7 @@ export function RechargeAmount() {
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
-      <PageHeader title="Montant" onBack={() => navigate('/app')} />
+      <PageHeader title="Montant" onBack={() => navigate(-1)} />
 
       <div className="flex-1 px-5 py-4 space-y-4">
         {/* Montant sélectionné - EN PREMIER */}
@@ -74,11 +74,12 @@ export function RechargeAmount() {
       </div>
 
       {/* BOUTON EN AVANT - GRAND ET VISIBLE */}
-      <div className="px-5 py-4 bg-white border-t-4 border-orange-400">
+      <div className={`px-5 py-4 bg-white border-t-4 transition-all duration-300 ${effective >= 500 ? 'border-cie-600 shadow-lg shadow-cie-600/30 animate-pop' : 'border-gray-200'}`}>
         <Button
+          variant={effective >= 500 ? "confirm" : "primary"}
           disabled={effective < 500 || loading}
           onClick={handleContinue}
-          className="w-full py-4 text-lg font-bold"
+          className={`w-full py-4 text-lg font-bold transition-all duration-300 ${effective >= 500 ? 'scale-100 shadow-lg' : 'scale-95 opacity-60'}`}
         >
           {loading ? '⏳ Chargement...' : `Confirmer ${fmtFcfa(effective)}`}
         </Button>
@@ -150,6 +151,7 @@ export function RechargeMethod() {
       {/* BOUTON EN AVANT - GRAND ET VISIBLE */}
       <div className="px-5 py-4 bg-white border-t-4 border-orange-400">
         <Button
+          variant="confirm"
           onClick={start}
           disabled={loading || !provider}
           className="w-full py-4 text-lg font-bold"

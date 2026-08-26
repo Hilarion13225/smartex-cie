@@ -9,11 +9,12 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
 export function Button({
   children, onClick, variant = 'primary', className = '', disabled, type = 'button',
 }: {
-  children: ReactNode; onClick?: () => void; variant?: 'primary' | 'secondary' | 'wave' | 'danger' | 'ghost'
+  children: ReactNode; onClick?: () => void; variant?: 'primary' | 'secondary' | 'wave' | 'danger' | 'ghost' | 'confirm'
   className?: string; disabled?: boolean; type?: 'button' | 'submit'
 }) {
   const styles = {
     primary: 'bg-cie-600 hover:bg-cie-700 text-white',
+    confirm: 'bg-gradient-to-r from-cie-600 to-cie-700 hover:from-cie-700 hover:to-cie-800 text-white shadow-lg shadow-cie-600/40 active:shadow-md active:scale-98',
     secondary: 'bg-white border border-gray-300 hover:bg-gray-50 text-gray-800',
     wave: 'bg-wave-500 hover:bg-wave-600 text-white',
     danger: 'bg-red-600 hover:bg-red-700 text-white',
@@ -24,7 +25,7 @@ export function Button({
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-xl px-4 py-3 font-semibold text-sm transition disabled:opacity-40 disabled:cursor-not-allowed ${styles[variant]} ${className}`}
+      className={`rounded-2xl px-4 py-3 font-semibold text-sm transition disabled:opacity-40 disabled:cursor-not-allowed ${styles[variant]} ${className}`}
     >
       {children}
     </button>

@@ -13,31 +13,32 @@ import {
 import { PaymentProgressPage } from './pages/client/payment-progress'
 import { PaymentErrorPage } from './pages/client/payment-error'
 import { TokensPage, TransactionDetail, TransactionsPage } from './pages/client/finance'
-import { AlertsPage, AutoRechargePage, DemoPage, ProfilePage } from './pages/client/settings'
+import { AlertsPage, AutoRechargePage, DemoPage, ProfilePage, SettingsPage } from './pages/client/settings'
 import {
   CieDashboard, CieFraude, CieIncidents, CieMeterDetail, CieMeters,
   CieParametres, CieQualite, CieRapports, CieRecharges, CieTelecom,
 } from './pages/cie'
 import { AdminAudit, AdminDevices, AdminRechargeLookup, AdminServices, AdminTokens, AdminUsers } from './pages/admin'
+import { IconDashboard, IconMeter, IconCreditCard, IconAlertTriangle, IconWifi, IconShield, IconTestTube, IconFileText, IconSettings, IconUsers, IconPlug, IconTicket, IconClipboard, IconServer } from './components/icons'
 
 const cieNav: PortalNavItem[] = [
-  { to: '/cie', label: 'Tableau de bord', icon: '📊', end: true },
-  { to: '/cie/compteurs', label: 'Compteurs', icon: '⚡' },
-  { to: '/cie/recharges', label: 'Recharges', icon: '💳' },
-  { to: '/cie/incidents', label: 'Incidents', icon: '🚨' },
-  { to: '/cie/telecom', label: 'Télécom', icon: '📡' },
-  { to: '/cie/fraude', label: 'Fraude / anomalies', icon: '🕵️' },
-  { to: '/cie/qualite', label: 'Qualité des données', icon: '🧪' },
-  { to: '/cie/rapports', label: 'Rapports', icon: '📄' },
-  { to: '/cie/parametres', label: 'Paramètres', icon: '⚙️' },
+  { to: '/cie', label: 'Tableau de bord', icon: <IconDashboard />, end: true },
+  { to: '/cie/compteurs', label: 'Compteurs', icon: <IconMeter /> },
+  { to: '/cie/recharges', label: 'Recharges', icon: <IconCreditCard /> },
+  { to: '/cie/incidents', label: 'Incidents', icon: <IconAlertTriangle /> },
+  { to: '/cie/telecom', label: 'Télécom', icon: <IconWifi /> },
+  { to: '/cie/fraude', label: 'Fraude / anomalies', icon: <IconShield /> },
+  { to: '/cie/qualite', label: 'Qualité des données', icon: <IconTestTube /> },
+  { to: '/cie/rapports', label: 'Rapports', icon: <IconFileText /> },
+  { to: '/cie/parametres', label: 'Paramètres', icon: <IconSettings /> },
 ]
 
 const adminNav: PortalNavItem[] = [
-  { to: '/admin', label: 'Utilisateurs & rôles', icon: '👥', end: true },
-  { to: '/admin/devices', label: 'Devices & credentials', icon: '🔌' },
-  { to: '/admin/tokens', label: 'Tokens', icon: '🎟️' },
-  { to: '/admin/audit', label: 'Audit', icon: '🧾' },
-  { to: '/admin/services', label: 'Monitoring services', icon: '🖥️' },
+  { to: '/admin', label: 'Utilisateurs & rôles', icon: <IconUsers />, end: true },
+  { to: '/admin/devices', label: 'Devices & credentials', icon: <IconPlug /> },
+  { to: '/admin/tokens', label: 'Tokens', icon: <IconTicket /> },
+  { to: '/admin/audit', label: 'Audit', icon: <IconClipboard /> },
+  { to: '/admin/services', label: 'Monitoring services', icon: <IconServer /> },
 ]
 
 function AppRoutes() {
@@ -59,6 +60,7 @@ function AppRoutes() {
           <Route path="tokens" element={<TokensPage />} />
           <Route path="tokens/:tokenId" element={<TokenDetailPage />} />
           <Route path="profil" element={<ProfilePage />} />
+          <Route path="parametres" element={<SettingsPage />} />
           <Route path="alertes" element={<AlertsPage />} />
           <Route path="auto-recharge" element={<AutoRechargePage />} />
           <Route path="demo" element={<DemoPage />} />
